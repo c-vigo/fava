@@ -73,7 +73,12 @@ class FavaPriceMap:
         raw_map: dict[BaseQuote, list[PricePoint]] = defaultdict(list)
         counts: Counter[BaseQuote] = Counter()
 
+        # List of currencies
+        self._currencies = set()
+
         for price in price_entries:
+            self._currencies.add(price.currency)
+            self._currencies.add(price.amount.currency)
             rate = price.amount.number
             base_quote = (price.currency, price.amount.currency)
             raw_map[base_quote].append((price.date, rate))
@@ -132,16 +137,42 @@ class FavaPriceMap:
         """Get the price point for the given currency pair."""
         base, quote = base_quote
         if base == quote:
-            return (None, ONE)
+            return None, ONE
 
         price_list = self._map.get(base_quote)
-        if price_list is None:
-            return (None, None)
 
-        if date is None:
-            return price_list[-1]
+        # Direct conversion
+        if price_list is not None:
+            if date is None:
+                return price_list[-1]
 
-        index = bisect(DateKeyWrapper(price_list), date)
-        if index == 0:
-            return (None, None)
-        return price_list[index - 1]
+            index = bisect(DateKeyWrapper(price_list), date)
+            if index == 0:
+                return None, None
+            return price_list[index - 1]
+
+        # A price is unavailable, attempt to convert via another currency
+        for currency in self._currencies:
+            if currency in base_quote:
+                continue
+            price_list1 = self._map.get((base, currency))
+            price_list2 = self._map.get((currency, quote))
+            if price_list1 is None or price_list2 is None:
+                continue
+
+            # No date, get latest price
+            if date is None:
+                date1 = price_list1[-1][0]
+                date2 = price_list2[-1][0]
+                if date1 < date2:
+                    return self.get_price_point((currency, quote), date1)
+                else:
+                    return self.get_price_point((base, currency), date2)
+
+            # Date is given
+            index = bisect(DateKeyWrapper(price_list1), date)
+            if index == 0:
+                return None, None
+            return self.get_price_point((currency, quote), price_list1[index-1][0])
+
+        return None, None
