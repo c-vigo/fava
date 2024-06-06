@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Various utilities."""
+
 from __future__ import annotations
 
 import json
@@ -51,14 +52,19 @@ def generate_bql_grammar_json() -> None:
     path.write_text("export default " + json.dumps(data))
 
 
+class MissingPoeditorTokenError(UsageError):
+    def __init__(self) -> None:
+        super().__init__(
+            "The POEDITOR_TOKEN environment variable needs to be set."
+        )
+
+
 @cli.command()
 def download_translations() -> None:
     """Fetch updated translations from POEditor.com."""
     token = environ.get("POEDITOR_TOKEN")
     if not token:
-        raise UsageError(
-            "The POEDITOR_TOKEN environment variable needs to be set.",
-        )
+        raise MissingPoeditorTokenError
     for language in LOCALES:
         download_from_poeditor(language, token)
 
@@ -68,9 +74,7 @@ def upload_translations() -> None:
     """Upload .pot message catalog to POEditor.com."""
     token = environ.get("POEDITOR_TOKEN")
     if not token:
-        raise UsageError(
-            "The POEDITOR_TOKEN environment variable needs to be set.",
-        )
+        raise MissingPoeditorTokenError
     path = FAVA_PATH / "translations" / "messages.pot"
     echo(f"Uploading message catalog: {path}")
     data = {

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
 import sys
 import traceback
 from dataclasses import dataclass
@@ -17,17 +16,49 @@ from beancount.ingest import cache  # type: ignore[import-untyped]
 from beancount.ingest import extract
 from beancount.ingest import identify
 
+from fava.beans.ingest import BeanImporterProtocol
 from fava.core.module_base import FavaModule
 from fava.helpers import BeancountError
 from fava.helpers import FavaAPIError
+from fava.util.date import local_today
 
 if TYPE_CHECKING:  # pragma: no cover
+    import datetime
+
     from fava.beans.abc import Directive
     from fava.core import FavaLedger
 
 
 class IngestError(BeancountError):
     """An error with one of the importers."""
+
+
+class ImporterMethodCallError(FavaAPIError):
+    """Error calling one of the importer methods."""
+
+    def __init__(self, err: Exception) -> None:
+        super().__init__(f"Error calling importer method: {err}")
+
+
+class ImporterExtractError(FavaAPIError):
+    """Error calling extract for importer."""
+
+    def __init__(self, name: str, err: Exception) -> None:
+        super().__init__(f"Error calling extract for importer {name}: {err}")
+
+
+class MissingImporterConfigError(FavaAPIError):
+    """Missing import-config option."""
+
+    def __init__(self) -> None:
+        super().__init__("Missing import-config option")
+
+
+class MissingImporterDirsError(FavaAPIError):
+    """You need to set at least one imports-dir."""
+
+    def __init__(self) -> None:
+        super().__init__("You need to set at least one imports-dir.")
 
 
 @dataclass(frozen=True)
@@ -49,20 +80,23 @@ class FileImporters:
     importers: list[FileImportInfo]
 
 
-def file_import_info(filename: str, importer: Any) -> FileImportInfo:
+def file_import_info(
+    filename: str,
+    importer: BeanImporterProtocol,
+) -> FileImportInfo:
     """Generate info about a file with an importer."""
     file = cache.get_file(filename)
     try:
         account = importer.file_account(file)
         date = importer.file_date(file)
         name = importer.file_name(file)
-    except Exception as err:  # noqa: BLE001
-        raise FavaAPIError(f"Error calling importer method: {err}") from err
+    except Exception as err:
+        raise ImporterMethodCallError(err) from err
 
     return FileImportInfo(
         importer.name(),
         account or "",
-        date or datetime.date.today(),
+        date or local_today(),
         name or Path(filename).name,
     )
 
@@ -73,7 +107,7 @@ class IngestModule(FavaModule):
     def __init__(self, ledger: FavaLedger) -> None:
         super().__init__(ledger)
         self.config: list[Any] = []
-        self.importers: dict[str, Any] = {}
+        self.importers: dict[str, BeanImporterProtocol] = {}
         self.hooks: list[Any] = []
         self.mtime: int | None = None
 
@@ -86,9 +120,15 @@ class IngestModule(FavaModule):
         return self.ledger.join_path(config_path)
 
     def _error(self, msg: str) -> None:
-        self.ledger.errors.append(IngestError(None, msg, None))
+        self.ledger.errors.append(
+            IngestError(
+                {"filename": str(self.module_path), "lineno": 0},
+                msg,
+                None,
+            ),
+        )
 
-    def load_file(self) -> None:
+    def load_file(self) -> None:  # noqa: D102
         if self.module_path is None:
             return
         module_path = self.module_path
@@ -119,9 +159,16 @@ class IngestModule(FavaModule):
                 self._error(f"Error in importer '{module_path}': {message}")
             else:
                 self.hooks = hooks
-        self.importers = {
-            importer.name(): importer for importer in self.config
-        }
+        self.importers = {}
+        for importer in self.config:
+            if not isinstance(importer, BeanImporterProtocol):
+                name = importer.__class__.__name__
+                self._error(
+                    f"Importer class '{name}' in '{module_path}' does "
+                    "not satisfy importer protocol",
+                )
+            else:
+                self.importers[importer.name()] = importer
 
     def import_data(self) -> list[FileImporters]:
         """Identify files and importers that can be imported.
@@ -132,7 +179,7 @@ class IngestModule(FavaModule):
         if not self.config:
             return []
 
-        ret: list[FileImporters] = []
+        ret = []
 
         for directory in self.ledger.fava_options.import_dirs:
             full_path = self.ledger.join_path(directory)
@@ -158,7 +205,7 @@ class IngestModule(FavaModule):
             A list of new imported entries.
         """
         if not self.module_path:
-            raise FavaAPIError("Missing import-config option")
+            raise MissingImporterConfigError
 
         if (
             self.mtime is None
@@ -166,11 +213,14 @@ class IngestModule(FavaModule):
         ):
             self.load_file()
 
-        new_entries = extract.extract_from_file(
-            filename,
-            self.importers.get(importer_name),
-            existing_entries=self.ledger.all_entries,
-        )
+        try:
+            new_entries = extract.extract_from_file(
+                filename,
+                self.importers.get(importer_name),
+                existing_entries=self.ledger.all_entries,
+            )
+        except Exception as exc:
+            raise ImporterExtractError(importer_name, exc) from exc
 
         new_entries_list: list[tuple[str, list[Directive]]] = [
             (filename, new_entries),
@@ -199,7 +249,7 @@ def filepath_in_primary_imports_folder(
     """
     primary_imports_folder = next(iter(ledger.fava_options.import_dirs), None)
     if primary_imports_folder is None:
-        raise FavaAPIError("You need to set at least one imports-dir.")
+        raise MissingImporterDirsError
 
     for separator in sep, altsep:
         if separator:

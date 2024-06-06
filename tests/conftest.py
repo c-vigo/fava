@@ -1,12 +1,10 @@
 """Test fixtures."""
 
-# pylint: disable=redefined-outer-name
-
 from __future__ import annotations
 
-import datetime
 import os
 import re
+import shutil
 from pathlib import Path
 from pprint import pformat
 from textwrap import dedent
@@ -23,6 +21,7 @@ from fava.beans.load import load_string
 from fava.core import FavaLedger
 from fava.core.budgets import parse_budgets
 from fava.core.charts import dumps
+from fava.util.date import local_today
 
 if TYPE_CHECKING:  # pragma: no cover
     from typing import Literal
@@ -47,7 +46,8 @@ if TYPE_CHECKING:  # pragma: no cover
             *,
             name: str = ...,
             json: bool = ...,
-        ) -> None: ...
+        ) -> None:
+            """Check snapshot."""
 
 
 @pytest.fixture(scope="session")
@@ -119,7 +119,8 @@ def snapshot(
         # print strings directly, otherwise try pretty-printing
         out = data if isinstance(data, str) else pformat(data)
         # replace today
-        out = out.replace(str(datetime.date.today()), "TODAY")
+        today = local_today()
+        out = out.replace(str(today), "TODAY")
         # replace entry hashes
         out = re.sub(r'"[0-9a-f]{32}', '"ENTRY_HASH', out)
         out = re.sub(r"context-[0-9a-f]{32}", "context-ENTRY_HASH", out)
@@ -176,6 +177,17 @@ def app(test_data_dir: Path) -> Flask:
 
 
 @pytest.fixture()
+def app_in_tmp_dir(test_data_dir: Path, tmp_path: Path) -> Flask:
+    """Get a Fava Flask app in a tmp_dir."""
+    ledger_path = tmp_path / "edit-example.beancount"
+    shutil.copy(test_data_dir / "edit-example.beancount", ledger_path)
+    ledger_path.chmod(tmp_path.stat().st_mode)
+    fava_app = create_app([str(ledger_path)], load=True)
+    fava_app.testing = True
+    return fava_app
+
+
+@pytest.fixture()
 def test_client(app: Flask) -> FlaskClient:
     """Get the test client for the Fava Flask app."""
     return app.test_client()
@@ -215,7 +227,7 @@ def budgets_doc(load_doc_custom_entries: list[Custom]) -> BudgetDict:
     return budgets
 
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     #: Slugs of the ledgers that are loaded for the test cases.
     LedgerSlug: TypeAlias = Literal[
         "example",

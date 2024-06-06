@@ -89,17 +89,22 @@
    */
   async function extract(filename: string, importer: string) {
     const extractCacheKey = `${filename}:${importer}`;
-    let cached = extractCache.get(extractCacheKey);
-    if (!cached) {
-      cached = await get("extract", { filename, importer });
-      if (!cached.length) {
-        notify("No entries to import from this file.", "warning");
-        return;
-      }
-      extractCache.set(extractCacheKey, cached);
-      extractCache = extractCache;
+    const cached = extractCache.get(extractCacheKey);
+    if (cached) {
+      entries = cached;
+      return;
     }
-    entries = cached;
+    try {
+      entries = await get("extract", { filename, importer });
+      if (entries.length) {
+        extractCache.set(extractCacheKey, entries);
+        extractCache = extractCache;
+      } else {
+        notify("No entries to import from this file.", "warning");
+      }
+    } catch (error) {
+      notify_err(error, (e) => e.message);
+    }
   }
 
   /**
@@ -108,7 +113,7 @@
   async function save() {
     const withoutDuplicates = entries.filter((e) => !isDuplicate(e));
     const key = [...extractCache].find(([, e]) => e === entries)?.[0];
-    if (key) {
+    if (key != null) {
       extractCache.delete(key);
       extractCache = extractCache;
     }
@@ -123,7 +128,7 @@
       return;
     }
     await Promise.all(
-      Array.from(fileUpload.files).map((file) => {
+      Array.from(fileUpload.files).map(async (file) => {
         const formData = new FormData();
         formData.append("file", file, file.name);
         return put("upload_import_file", formData).then(notify, (error) => {
@@ -136,7 +141,7 @@
   }
 </script>
 
-{#if !$fava_options.import_config}
+{#if $fava_options.import_config == null}
   <p>
     No importers configured. See <a href={urlFor("help/import")}
       >Help (Import)</a

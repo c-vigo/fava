@@ -29,6 +29,11 @@ class FavaExtensionError(BeancountError):
     """Error in one of Fava's extensions."""
 
 
+class JinjaLoaderMissingError(ValueError):  # noqa: D101
+    def __init__(self) -> None:
+        super().__init__("Expected Flask app to have jinja_loader.")
+
+
 class FavaExtensionBase:
     """Base class for extensions for Fava.
 
@@ -84,7 +89,7 @@ class FavaExtensionBase:
     def jinja_env(self) -> jinja2.Environment:
         """Jinja env for this extension."""
         if not current_app.jinja_loader:
-            raise ValueError("Expected Flask app to have jinja_loader.")
+            raise JinjaLoaderMissingError
         ext_loader = jinja2.FileSystemLoader(self.extension_dir / "templates")
         loader = jinja2.ChoiceLoader([ext_loader, current_app.jinja_loader])
         return current_app.jinja_env.overlay(loader=loader)
@@ -200,7 +205,7 @@ def extension_endpoint(
     ) -> Callable[[FavaExtensionBase], Response]:
         f: Any = func
         f.endpoint_key = (
-            endpoint_name if endpoint_name else func.__name__,
+            endpoint_name or func.__name__,
             methods or ["GET"],
         )
         return func

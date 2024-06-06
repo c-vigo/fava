@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import errno
+import logging
 import os
 from pathlib import Path
 
@@ -24,6 +25,18 @@ class AddressInUse(click.ClickException):  # noqa: D101
         )
 
 
+class NonAbsolutePathError(click.UsageError):  # noqa: D101
+    def __init__(self, path: str) -> None:
+        super().__init__(
+            f"Paths in BEANCOUNT_FILE need to be absolute: {path}"
+        )
+
+
+class NoFileSpecifiedError(click.UsageError):  # noqa: D101
+    def __init__(self) -> None:
+        super().__init__("No file specified")
+
+
 def _add_env_filenames(filenames: tuple[str, ...]) -> set[str]:
     """Read additional filenames from BEANCOUNT_FILE."""
     env_filename = os.environ.get("BEANCOUNT_FILE")
@@ -33,9 +46,7 @@ def _add_env_filenames(filenames: tuple[str, ...]) -> set[str]:
     env_names = env_filename.split(os.pathsep)
     for name in env_names:
         if not Path(name).is_absolute():
-            raise click.UsageError(
-                "Paths in BEANCOUNT_FILE need to be absolute",
-            )
+            raise NonAbsolutePathError(name)
 
     return set(filenames + tuple(env_names))
 
@@ -112,7 +123,7 @@ def main(
     all_filenames = _add_env_filenames(filenames)
 
     if not all_filenames:
-        raise click.UsageError("No file specified")
+        raise NoFileSpecifiedError
 
     app = create_app(
         all_filenames,
@@ -144,11 +155,12 @@ def main(
                 raise AddressInUse(port) from error
             raise click.Abort from error
     else:
+        logging.getLogger("fava").setLevel(logging.DEBUG)
         if profile:
             app.wsgi_app = ProfilerMiddleware(  # type: ignore[method-assign]
                 app.wsgi_app,
                 restrictions=(30,),
-                profile_dir=profile_dir if profile_dir else None,
+                profile_dir=profile_dir or None,
             )
 
         app.jinja_env.auto_reload = True

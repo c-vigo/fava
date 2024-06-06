@@ -22,13 +22,22 @@ const hide = (): void => {
 
 /** Some small utilities to create tooltip contents. */
 export const domHelpers = {
+  /** Create a <br> element. */
   br: (): HTMLBRElement => document.createElement("br"),
+  /** Create a <em> element with the given content. */
   em: (content: string): HTMLElement => {
     const em = document.createElement("em");
     em.textContent = content;
     return em;
   },
+  /** Create a text node for the given text. */
   t: (text: string): Text => document.createTextNode(text),
+  /** Create a <pre> element with the given content. */
+  pre: (content: string): HTMLPreElement => {
+    const pre = document.createElement("pre");
+    pre.textContent = content;
+    return pre;
+  },
 };
 
 export type TooltipContent = (HTMLElement | Text)[];
@@ -48,8 +57,8 @@ export const followingTooltip: Action<SVGElement, () => TooltipContent> = (
   function followMouse(event: MouseEvent) {
     const t = tooltip();
     t.style.opacity = "1";
-    t.style.left = `${event.pageX}px`;
-    t.style.top = `${event.pageY - 15}px`;
+    t.style.left = `${event.pageX.toString()}px`;
+    t.style.top = `${(event.pageY - 15).toString()}px`;
   }
   node.addEventListener("mouseenter", () => {
     const t = tooltip();
@@ -93,8 +102,8 @@ export const positionedTooltip: Action<SVGGElement, TooltipFindNode> = (
       const t = tooltip();
       t.style.opacity = "1";
       t.replaceChildren(...content);
-      t.style.left = `${window.scrollX + x + matrix.e}px`;
-      t.style.top = `${window.scrollY + y + matrix.f - 15}px`;
+      t.style.left = `${(window.scrollX + x + matrix.e).toString()}px`;
+      t.style.top = `${(window.scrollY + y + matrix.f - 15).toString()}px`;
     } else {
       hide();
     }

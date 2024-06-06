@@ -26,7 +26,7 @@
 
   interface ResultType {
     result?: { table: string; chart: FavaChart | null };
-    error?: unknown;
+    error?: string;
   }
 
   const query_results: Record<string, ResultType> = {};
@@ -119,20 +119,22 @@
   {#each query_result_array as [history_item, { result, error }] (history_item)}
     <details bind:this={resultElems[history_item]}>
       <summary
-        class:inactive={!result && !error}
+        class:inactive={!result && error == null}
         on:click={() => {
           click(history_item);
         }}
       >
-        <ReadonlyQueryEditor value={history_item} error={!!error} />
+        <ReadonlyQueryEditor value={history_item} error={error != null} />
         <span class="spacer" />
         {#if result}
           <QueryLinks query={history_item} />
         {/if}
         <button
           type="button"
-          on:click|stopPropagation={() => deleteItem(history_item)}>x</button
+          on:click|stopPropagation={async () => deleteItem(history_item)}
         >
+          x
+        </button>
       </summary>
       <div>
         {#if result}

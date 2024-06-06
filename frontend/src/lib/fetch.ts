@@ -12,7 +12,7 @@ import {
 class FetchError extends Error {}
 
 /** Wrapper around fetch with some default options */
-export function fetch(
+export async function fetch(
   input: string,
   init: RequestInit = {},
 ): Promise<Response> {
@@ -31,7 +31,7 @@ async function handleJSON(response: Response): Promise<unknown> {
   if (!isJsonObject(data)) {
     throw new FetchError("Invalid response: not an object");
   }
-  if (!data.success) {
+  if (data.success !== true) {
     throw new FetchError(
       typeof data.error === "string"
         ? data.error

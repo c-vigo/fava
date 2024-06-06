@@ -49,7 +49,7 @@ class SerialisedTreeNodeWithCost(SerialisedTreeNode):
 class TreeNode:
     """A node in the account tree."""
 
-    __slots__ = ("name", "children", "balance", "balance_children", "has_txns")
+    __slots__ = ("balance", "balance_children", "children", "has_txns", "name")
 
     def __init__(self, name: str) -> None:
         #: Account name.
@@ -106,6 +106,7 @@ class TreeNode:
     def serialise_with_context(
         self,
     ) -> SerialisedTreeNode | SerialisedTreeNodeWithCost:
+        """Serialise, getting all parameters from Flask context."""
         return self.serialise(
             g.conv,
             g.ledger.prices,

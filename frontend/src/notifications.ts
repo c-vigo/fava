@@ -13,7 +13,7 @@ const notificationList = (() => {
     // always update the distance to top to account for the current header height
     const headerHeight =
       document.querySelector("header")?.getBoundingClientRect().height ?? 50;
-    value.style.top = `${headerHeight + 10}px`;
+    value.style.top = `${(headerHeight + 10).toString()}px`;
     return value;
   };
 })();
@@ -45,6 +45,15 @@ export function notify(
   setTimeout(() => {
     notification.remove();
   }, 5000);
+}
+
+/**
+ * Notify the user about an warning and log to console.
+ */
+export function notify_warn(msg: string): void {
+  notify(msg, "warning");
+  // eslint-disable-next-line no-console
+  console.warn(msg);
 }
 
 /**

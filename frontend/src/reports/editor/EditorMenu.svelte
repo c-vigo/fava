@@ -28,7 +28,7 @@
   function goToFileAndLine(filename: string, line?: number) {
     const url = urlFor("editor/", { file_path: filename, line });
     router.navigate(url);
-    if (filename === file_path && line) {
+    if (filename === file_path && line != null) {
       editor.dispatch(scrollToLine(editor.state, line));
       editor.focus();
     }
@@ -71,7 +71,7 @@
       <AppMenuItem name={`'insert-entry' ${_("Options")}`}>
         {#each insertEntryOptions as opt}
           <AppMenuSubItem
-            title={`${opt.filename}:${opt.lineno}`}
+            title={`${opt.filename}:${opt.lineno.toString()}`}
             action={() => {
               goToFileAndLine(opt.filename, opt.lineno - 1);
             }}

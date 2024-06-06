@@ -45,6 +45,7 @@ dependencies = [
     "markdown2>=2.3.0,<3",
     "ply",
     "simplejson>=3.16.0,<4",
+    "watchfiles>=0.20.0",
 ]
 
 [project.urls]
@@ -78,13 +79,14 @@ dev = [
     "sphinx",
     "sphinx-autodoc-typehints",
     "tox",
+    "tox-uv",
     "twine",
     "types-setuptools",
     "types-simplejson",
 ]
 
 [build-system]
-requires = ["setuptools>=60", "setuptools_scm>=8.0", "Babel>=2.7,<3"]
+requires = ["setuptools>=60", "setuptools_scm>=8.0", "Babel>=2.7,<3", "wheel"]
 build-backend = "_build_backend"
 backend-path = ["."]
 
@@ -104,9 +106,11 @@ strict = true
 [tool.pylint.'messages control']
 disable = [
     "too-few-public-methods",
-    "too-many-branches",
+    "too-many-branches",              # is checked by ruff (PLR0912)
     "too-many-instance-attributes",
+    "too-many-locals",                # is checked by ruff (PLR0914)
     "duplicate-code",
+    "stop-iteration-return",
     "invalid-unary-operand-type",    # type-checking like, had false-positives
     "not-an-iterable",               # type-checking like, had false-positives
     "unsubscriptable-object",        # type-checking like, had false-positives
@@ -117,6 +121,7 @@ disable = [
     "protected-access",              # is checked by ruff (SLF001)
     "invalid-name",                  # is checked by ruff (N)
     "missing-docstring",             # is checked by ruff (D)
+    "redefined-outer-name",          # false positives for pytest fixtures
 ]
 
 [tool.pytest.ini_options]
@@ -126,52 +131,46 @@ filterwarnings = "ignore:.*locked_cached_property.*deprecated:DeprecationWarning
 target-version = "py38"
 preview = true
 line-length = 79
+
+[tool.ruff.lint]
 extend-select = [
     "ALL",
 ]
 extend-ignore = [
-    "A003",     # allow class attributes to shadow builtins
-    "ANN101",   # allow `self` to be untyped
     "ANN401",   # allow `typing.Any`
     "C901",     # ignore mccabe complecity for now
     "CPY",      # no copyright notices in all files
-    "D102",     # allow undocumented methods
+    "COM812",   # better handled by formatter - avoid having trailing commas everywhere
     "D105",     # allow magic methods to be undocumented
     "D107",     # allow __init__ to be undocumented - the class should be.
-    "DTZ",      # allow naive dates (for now)
-    "E203",     # black
-    "EM101",    # allow long strings as error messages
-    "EM102",    # allow f-strings as error messages
     "PD",       # pandas-related, has false-positives
     "PERF203",  # allow try-except in loop; zero-cost since Python 3.11
     "PLR2004",  # allow magic constants in comparisons
     "PLR6301",  # allow methods that do not use self
     "S404",     # This is a bit over-zelous on subprocess
     "S603",     # This is a bit over-zelous on subprocess.run
-    "TRY003",   # allow long string constants as error messages
 ]
 
-[tool.ruff.flake8-type-checking]
+[tool.ruff.lint.flake8-type-checking]
 strict = true  # always move type-only imports to TYPE_CHECKING-if blocks
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 force-single-line = true
 order-by-type = false
 known-first-party = ["fava"]
 required-imports = ["from __future__ import annotations"]
 
-[tool.ruff.pydocstyle]
+[tool.ruff.lint.pydocstyle]
 convention = "google"
 
-[tool.ruff.pylint]
+[tool.ruff.lint.pylint]
 max-args = 9
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "contrib/**" = ["D", "INP"]
 "docs/**" = ["D", "ANN", "INP"]
 "tests/conftest.py" = ["S101"]
 "tests/test_*.py" = ["D", "PLC2701", "S101", "SLF001"]
-"tests/data/import_config.py" = ["ANN", "INP"]
-"src/fava/ext/portfolio_list/__init__.py" = ["ANN"]
+"tests/data/import_config.py" = ["D", "INP"]
 "stubs/**" = ["D"]
 "src/fava/core/filters.py" = ["D"]

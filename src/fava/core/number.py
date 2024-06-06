@@ -40,7 +40,8 @@ def get_locale_format(locale: Locale | None, precision: int) -> Formatter:
 
     pattern = copy.copy(locale.decimal_formats.get(None))
     if not pattern:
-        raise ValueError("Expected Locale to have a decimal format pattern")
+        msg = "Expected Locale to have a decimal format pattern"
+        raise ValueError(msg)
     pattern.frac_prec = (precision, precision)
 
     def locale_fmt(num: Decimal) -> str:
@@ -59,7 +60,7 @@ class DecimalFormatModule(FavaModule):
         self._default_pattern = get_locale_format(None, 2)
         self.precisions: dict[str, int] = {}
 
-    def load_file(self) -> None:
+    def load_file(self) -> None:  # noqa: D102
         locale = None
 
         locale_option = self.ledger.fava_options.locale

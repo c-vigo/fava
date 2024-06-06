@@ -74,7 +74,8 @@
     beancount_language_support,
   );
 
-  // update editor contents
+  // update editor contents if source changes
+  // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
   $: if (source) {
     editor.dispatch(replaceContents(editor.state, source.source));
     sha256sum = source.sha256sum;
@@ -120,7 +121,7 @@
 
 <form
   class="fixed-fullsize-container"
-  on:submit|preventDefault={() => save(editor)}
+  on:submit|preventDefault={async () => save(editor)}
 >
   <EditorMenu {file_path} {editor}>
     <SaveButton {changed} {saving} />

@@ -23,8 +23,8 @@ function showTooltip(target: HTMLElement, description: string): () => void {
     targetRect.left +
     Math.min((target.offsetWidth - tooltip.offsetWidth) / 2, 10);
   const top = targetRect.top + (target.offsetHeight - tooltip.offsetHeight) / 2;
-  tooltip.style.left = `${left}px`;
-  tooltip.style.top = `${top + window.scrollY}px`;
+  tooltip.style.left = `${left.toString()}px`;
+  tooltip.style.top = `${(top + window.scrollY).toString()}px`;
   return () => {
     tooltip.remove();
     if (hidden) {
@@ -182,7 +182,7 @@ function getKeySpecDescription(spec: KeySpec): string {
     return spec;
   }
   const key = isMac ? spec.mac ?? spec.key : spec.key;
-  return spec.note ? `${key} - ${spec.note}` : key;
+  return spec.note != null ? `${key} - ${spec.note}` : key;
 }
 
 /**
@@ -220,7 +220,7 @@ export const keyboardShortcut: Action<HTMLElement, KeySpec | undefined> = (
   spec,
 ) => {
   const setup = (s?: KeySpec) => {
-    if (s) {
+    if (s != null) {
       node.setAttribute("data-key", getKeySpecDescription(s));
       const unbind = bindKey(s, node);
       return () => {
@@ -228,7 +228,9 @@ export const keyboardShortcut: Action<HTMLElement, KeySpec | undefined> = (
         node.removeAttribute("data-key");
       };
     }
-    return () => {};
+    return () => {
+      // pass
+    };
   };
   let destroy = setup(spec);
 

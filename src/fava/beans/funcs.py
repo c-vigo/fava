@@ -22,7 +22,9 @@ if TYPE_CHECKING:  # pragma: no cover
 
 def hash_entry(entry: Directive) -> str:
     """Hash an entry."""
-    return compare.hash_entry(entry)  # type: ignore[no-any-return]
+    if hasattr(entry, "_fields"):
+        return compare.hash_entry(entry)  # type: ignore[no-any-return]
+    return str(hash(entry))
 
 
 def get_position(entry: Directive) -> tuple[str, int]:
@@ -32,7 +34,8 @@ def get_position(entry: Directive) -> tuple[str, int]:
     lineno = meta["lineno"]
     if isinstance(filename, str) and isinstance(lineno, int):
         return (filename, lineno)
-    raise ValueError("Invalid filename or lineno in entry metadata.")
+    msg = "Invalid filename or lineno in entry metadata."
+    raise ValueError(msg)
 
 
 def execute_query(

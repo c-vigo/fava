@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import date
-from datetime import datetime
 from unittest import mock
 
 import pytest
@@ -28,7 +27,7 @@ def test_interval() -> None:
 
 def _to_date(string: str) -> date:
     """Convert a string in ISO 8601 format into a datetime.date object."""
-    return datetime.strptime(string, "%Y-%m-%d").date()
+    return date.fromisoformat(string)
 
 
 @pytest.mark.parametrize(
@@ -180,6 +179,17 @@ def test_substitute(string: str, output: str) -> None:
         ("06-30", "2018-02-02", "fiscal_quarter", "FY2018-Q3"),
         ("06-30", "2018-07-03", "fiscal_quarter-1", "FY2018-Q4"),
         ("06-30", "2018-07-03", "fiscal_quarter+6", "FY2020-Q3"),
+        ("15-31", "2018-02-02", "fiscal_year", "FY2017"),
+        ("15-31", "2018-05-02", "fiscal_year", "FY2018"),
+        ("15-31", "2018-05-02", "fiscal_year-1", "FY2017"),
+        ("15-31", "2018-02-02", "fiscal_year+6", "FY2023"),
+        ("15-31", "2018-05-02", "fiscal_year+6", "FY2024"),
+        ("15-31", "2018-02-02", "fiscal_quarter", "FY2017-Q4"),
+        ("15-31", "2018-05-02", "fiscal_quarter", "FY2018-Q1"),
+        ("15-31", "2018-08-02", "fiscal_quarter", "FY2018-Q2"),
+        ("15-31", "2018-11-02", "fiscal_quarter", "FY2018-Q3"),
+        ("15-31", "2018-05-02", "fiscal_quarter-1", "FY2017-Q4"),
+        ("15-31", "2018-05-02", "fiscal_quarter+6", "FY2019-Q3"),
         ("04-05", "2018-07-03", "fiscal_quarter", None),
     ],
 )
@@ -196,7 +206,7 @@ def test_fiscal_substitute(
         if output is None:
             with pytest.raises(
                 ValueError,
-                match="Cannot use fiscal_quarter if fiscal year",
+                match="Cannot use fiscal quarter if fiscal year",
             ):
                 substitute(string, fye)
         else:
@@ -330,6 +340,10 @@ def test_month_offset(
         # 28th February - consider leap years [FYE=02-28]
         (2016, None, "02-28", "2015-03-01", "2016-03-01"),
         (2017, None, "02-28", "2016-03-01", "2017-03-01"),
+        # 1st Apr (last year) - JP [FYE=15-31]
+        (2018, None, "15-31", "2018-04-01", "2019-04-01"),
+        (2018, 1, "15-31", "2018-04-01", "2018-07-01"),
+        (2018, 4, "15-31", "2019-01-01", "2019-04-01"),
         # None
         (2018, None, None, "2018-01-01", "2019-01-01"),
         # expected errors
@@ -356,6 +370,7 @@ def test_get_fiscal_period(
         ("12-31", 12, 31),
         ("06-30", 6, 30),
         ("02-28", 2, 28),
+        ("15-31", 15, 31),
     ],
 )
 def test_parse_fye_string(fye_str: str, month: int, day: int) -> None:

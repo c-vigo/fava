@@ -14,7 +14,6 @@
   export let date: string | undefined;
   export let move: (arg: { from: number; to: number }) => void;
   export let remove: () => void;
-  export let add: () => void;
 
   $: amount_number = posting.amount.replace(/[^\-?0-9.]/g, "");
   $: amountSuggestions = $currencies.map((c) => `${amount_number} ${c}`);
@@ -26,10 +25,11 @@
     draggable = !(event.target instanceof HTMLInputElement);
   }
   function dragstart(event: DragEvent) {
-    event.dataTransfer?.setData("fava/posting", `${index}`);
+    event.dataTransfer?.setData("fava/posting", index.toString());
   }
   function dragenter(event: DragEvent) {
-    if (event.dataTransfer?.types.includes("fava/posting")) {
+    const types = event.dataTransfer?.types ?? [];
+    if (types.includes("fava/posting")) {
       event.preventDefault();
       drag = true;
     }
@@ -39,7 +39,7 @@
   }
   function drop(event: DragEvent) {
     const from = event.dataTransfer?.getData("fava/posting");
-    if (from) {
+    if (from != null) {
       move({ from: +from, to: index });
       drag = false;
     }
@@ -79,14 +79,6 @@
     bind:value={posting.amount}
   />
   <AddMetadataButton bind:meta={posting.meta} />
-  <button
-    type="button"
-    class="muted round add-row"
-    on:click={add}
-    title={_("Add posting")}
-  >
-    +
-  </button>
   <EntryMetadata bind:meta={posting.meta} />
 </div>
 
@@ -104,20 +96,12 @@
     cursor: initial;
   }
 
-  div .add-row {
-    display: none;
-  }
-
-  div:last-child .add-row {
-    display: initial;
+  div:last-child .remove-row {
+    visibility: hidden;
   }
 
   div :global(.amount) {
     width: 220px;
-  }
-
-  div:last-child :global(.amount) {
-    width: 192px;
   }
 
   @media (width <= 767px) {

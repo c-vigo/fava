@@ -82,10 +82,10 @@ def loads(s: str | bytes) -> Any:
 class FavaJSONProvider(JSONProvider):
     """Use custom JSON encoder and decoder."""
 
-    def dumps(self, obj: Any, **_kwargs: Any) -> str:
+    def dumps(self, obj: Any, **_kwargs: Any) -> str:  # noqa: D102
         return dumps(obj)
 
-    def loads(self, s: str | bytes, **_kwargs: Any) -> Any:
+    def loads(self, s: str | bytes, **_kwargs: Any) -> Any:  # noqa: D102
         return simplejson_loads(s)
 
 
@@ -148,7 +148,6 @@ class ChartModule(FavaModule):
             conversion: The conversion to use.
             invert: invert all numbers.
         """
-        # pylint: disable=too-many-locals
         prices = self.ledger.prices
 
         # limit the bar charts to 100 intervals
@@ -338,7 +337,8 @@ class ChartModule(FavaModule):
             rows: The result rows.
         """
         if not self.can_plot_query(types):
-            raise FavaAPIError("Can not plot the given chart.")
+            msg = "Can not plot the given chart."
+            raise FavaAPIError(msg)
         if types[0][1] is date:
             return [
                 {"date": date, "balance": simple_units(inv)}

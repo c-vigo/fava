@@ -36,6 +36,30 @@ class FilterError(FavaAPIError):
         return self.message
 
 
+class FilterParseError(FilterError):
+    """Filter parse error."""
+
+    def __init__(self) -> None:
+        super().__init__("filter", "Failed to parse filter: ")
+
+
+class FilterIllegalCharError(FilterError):
+    """Filter illegal char error."""
+
+    def __init__(self, char: str) -> None:
+        super().__init__(
+            "filter",
+            f'Illegal character "{char}" in filter.',
+        )
+
+
+class TimeFilterParseError(FilterError):
+    """Time filter parse error."""
+
+    def __init__(self, value: str) -> None:
+        super().__init__("time", f"Failed to parse date: {value}")
+
+
 class Token:
     """A token having a certain type and value.
 
@@ -43,7 +67,7 @@ class Token:
     error.
     """
 
-    __slots__ = ("type", "value", "lexer")
+    __slots__ = ("lexer", "type", "value")
 
     def __init__(self, type_: str, value: str) -> None:
         self.type = type_
@@ -117,7 +141,8 @@ class FilterSyntaxLexer:
                 pos += len(value)
                 token = match.lastgroup
                 if token is None:
-                    raise ValueError("Internal Error")
+                    msg = "Internal Error"
+                    raise ValueError(msg)
                 func: Callable[[str, str], tuple[str, str]] = getattr(
                     self,
                     token,
@@ -128,10 +153,7 @@ class FilterSyntaxLexer:
                 yield Token(char, char)
                 pos += 1
             else:
-                raise FilterError(
-                    "filter",
-                    f'Illegal character "{char}" in filter.',
-                )
+                raise FilterIllegalCharError(char)
 
 
 class Match:
@@ -155,7 +177,7 @@ class FilterSyntaxParser:
     tokens = FilterSyntaxLexer.tokens
 
     def p_error(self, _: Any) -> None:
-        raise FilterError("filter", "Failed to parse filter: ")
+        raise FilterParseError
 
     def p_filter(self, p: list[Any]) -> None:
         """
@@ -302,7 +324,7 @@ class EntryFilter(ABC):
 class TimeFilter(EntryFilter):
     """Filter by dates."""
 
-    __slots__ = ("date_range", "_options")
+    __slots__ = ("_options", "date_range")
 
     def __init__(
         self,
@@ -313,7 +335,7 @@ class TimeFilter(EntryFilter):
         self._options = options
         begin, end = parse_date(value, fava_options.fiscal_year_end)
         if not begin or not end:
-            raise FilterError("time", f"Failed to parse date: {value}")
+            raise TimeFilterParseError(value)
         self.date_range = DateRange(begin, end)
 
     def apply(self, entries: list[Directive]) -> list[Directive]:
@@ -348,7 +370,7 @@ class AdvancedFilter(EntryFilter):
                 tokenfunc=lambda toks=tokens: next(toks, None),
             )
         except FilterError as exception:
-            exception.message = exception.message + value
+            exception.message += value
             raise
 
     def apply(self, entries: list[Directive]) -> list[Directive]:
@@ -362,7 +384,7 @@ class AccountFilter(EntryFilter):
     The filter string can either be a regular expression or a parent account.
     """
 
-    __slots__ = ("_value", "_match")
+    __slots__ = ("_match", "_value")
 
     def __init__(self, value: str) -> None:
         self._value = value

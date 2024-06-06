@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from functools import singledispatch
+from typing import TYPE_CHECKING
 
 from beancount.core.position import CostSpec
 from beancount.parser.printer import (  # type: ignore[import-untyped]
@@ -17,6 +18,9 @@ from fava.beans.abc import Position
 from fava.beans.helpers import replace
 from fava.core.misc import align
 
+if TYPE_CHECKING:  # pragma: no cover
+    from fava.beans import protocols
+
 
 @singledispatch
 def to_string(
@@ -25,7 +29,8 @@ def to_string(
     _indent: int | None = None,
 ) -> str:
     """Convert to a string."""
-    raise TypeError(f"Unsupported object of type {type(obj)}")
+    msg = f"Unsupported object of type {type(obj)}"
+    raise TypeError(msg)
 
 
 @to_string.register(Amount)
@@ -34,7 +39,8 @@ def _(obj: Amount) -> str:
 
 
 @to_string.register(Cost)
-def _(cost: Cost) -> str:
+def cost_to_string(cost: Cost | protocols.Cost) -> str:
+    """Convert a cost to a string."""
     strs = [f"{cost.number} {cost.currency}"]
     if cost.date:
         strs.append(cost.date.isoformat())

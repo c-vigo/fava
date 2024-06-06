@@ -16,7 +16,7 @@ from fava.core.conversion import cost_or_value
 from fava.ext import FavaExtensionBase
 from fava.helpers import FavaAPIError
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from fava.beans.funcs import ResultType
     from fava.core.tree import Tree
     from fava.core.tree import TreeNode
@@ -73,7 +73,8 @@ class PortfolioList(FavaExtensionBase):  # pragma: no cover
                         option[1][1],
                     )
                 else:
-                    raise FavaAPIError("Portfolio List: Invalid option.")
+                    msg = "Portfolio List: Invalid option."
+                    raise FavaAPIError(msg)
                 portfolios.append(portfolio)
 
         return portfolios
@@ -121,7 +122,7 @@ class PortfolioList(FavaExtensionBase):  # pragma: no cover
             and regexer.match(str(entry.meta[metadata_key]))
         ]
         return Portfolio(
-            f"Accounts with '{metadata_key}' metadata matching: '{pattern }'",
+            f"Accounts with '{metadata_key}' metadata matching: '{pattern}'",
             self._portfolio_data(selected_nodes),
         )
 

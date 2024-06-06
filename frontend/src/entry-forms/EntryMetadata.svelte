@@ -11,6 +11,7 @@
   );
 
   function removeMetadata(metakey: string) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [metakey]: ignored, ...rest } = meta;
     meta = rest;
   }
@@ -24,7 +25,7 @@
         }
       } else {
         const val = meta[key];
-        if (val) {
+        if (val != null) {
           m[key] = val;
         }
       }

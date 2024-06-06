@@ -10,7 +10,7 @@
   import { ctx, short } from "../stores/format";
 
   import Axis from "./Axis.svelte";
-  import { currenciesScale, padExtent } from "./helpers";
+  import { currenciesScale, includeZero, padExtent } from "./helpers";
   import type { LineChart, LineChartDatum } from "./line";
   import type { TooltipFindNode } from "./tooltip";
   import { positionedTooltip } from "./tooltip";
@@ -38,7 +38,10 @@
     max(data, (s) => s.values[s.values.length - 1]?.date) ?? today,
   ] as const;
   $: x = scaleUtc([0, innerWidth]).domain(xExtent);
-  $: yExtent = extent(allValues, (v) => v.value);
+  $: valueExtent = extent(allValues, (v) => v.value);
+  // Include zero in area charts so the entire area is shown, not a cropped part of it
+  $: yExtent =
+    $lineChartMode === "area" ? includeZero(valueExtent) : valueExtent;
   // Span y-axis as max minus min value plus 5 percent margin
   $: y = scaleLinear([innerHeight, 0]).domain(padExtent(yExtent));
 
@@ -75,14 +78,14 @@
   $: futureFilter = xExtent[1] > today ? "url(#desaturateFuture)" : undefined;
 </script>
 
-<svg {width} {height}>
+<svg viewBox={`0 0 ${width.toString()} ${height.toString()}`}>
   <filter id="desaturateFuture">
     <feColorMatrix type="saturate" values="0.5" x={x(today)} />
     <feBlend in2="SourceGraphic" />
   </filter>
   <g
     use:positionedTooltip={tooltipFindNode}
-    transform={`translate(${margin.left},${margin.top})`}
+    transform={`translate(${margin.left.toString()},${margin.top.toString()})`}
   >
     <Axis x axis={xAxis} {innerHeight} />
     <Axis y axis={yAxis} />

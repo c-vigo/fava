@@ -9,14 +9,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
 from typing import TYPE_CHECKING
-from typing import TypeVar
 
 from beancount.core.data import iter_entry_dates
 from beancount.core.inventory import Inventory
-from beancount.loader import (  # type: ignore[attr-defined]
-    _load,  # noqa: PLC2701
-)
-from beancount.loader import load_file
 from beancount.utils.encryption import is_encrypted_file
 
 from fava.beans.abc import Balance
@@ -26,6 +21,7 @@ from fava.beans.account import child_account_tester
 from fava.beans.account import get_entry_accounts
 from fava.beans.funcs import get_position
 from fava.beans.funcs import hash_entry
+from fava.beans.load import load_uncached
 from fava.beans.prices import FavaPriceMap
 from fava.beans.str import to_string
 from fava.core.accounts import AccountDict
@@ -48,7 +44,7 @@ from fava.core.misc import FavaMisc
 from fava.core.number import DecimalFormatModule
 from fava.core.query_shell import QueryShell
 from fava.core.tree import Tree
-from fava.core.watcher import Watcher
+from fava.core.watcher import WatchfilesWatcher
 from fava.helpers import FavaAPIError
 from fava.util import listify
 from fava.util.date import dateranges
@@ -67,33 +63,16 @@ if TYPE_CHECKING:  # pragma: no cover
     from fava.util.date import Interval
 
 
-MODULES = [
-    "accounts",
-    "attributes",
-    "budgets",
-    "charts",
-    "commodities",
-    "extensions",
-    "file",
-    "format_decimal",
-    "misc",
-    "query_shell",
-    "ingest",
-]
-
-T = TypeVar("T")
-
-
 class FilteredLedger:
     """Filtered Beancount ledger."""
 
     __slots__ = (
         "__dict__",  # for the cached_property decorator
-        "ledger",
-        "entries",
-        "date_range",
         "_date_first",
         "_date_last",
+        "date_range",
+        "entries",
+        "ledger",
     )
     _date_first: date | None
     _date_last: date | None
@@ -127,7 +106,7 @@ class FilteredLedger:
         self._date_first = None
         self._date_last = None
         for entry in self.entries:
-            if isinstance(entry, (Transaction, Price)):
+            if isinstance(entry, Transaction):
                 self._date_first = entry.date
                 break
         for entry in reversed(self.entries):
@@ -202,17 +181,27 @@ class FavaLedger:
     """
 
     __slots__ = (
+        "_is_encrypted",
+        "accounts",
         "accounts",
         "all_entries",
         "all_entries_by_type",
+        "attributes",
         "beancount_file_path",
+        "budgets",
+        "charts",
+        "commodities",
         "errors",
+        "extensions",
         "fava_options",
-        "_is_encrypted",
+        "file",
+        "format_decimal",
+        "ingest",
+        "misc",
         "options",
         "prices",
-        "_watcher",
-        *MODULES,
+        "query_shell",
+        "watcher",
     )
 
     #: List of all (unfiltered) entries.
@@ -271,26 +260,16 @@ class FavaLedger:
         #: A :class:`.AccountDict` module - details about the accounts.
         self.accounts = AccountDict(self)
 
-        self._watcher = Watcher()
+        self.watcher = WatchfilesWatcher()
 
         self.load_file()
 
     def load_file(self) -> None:
         """Load the main file and all included files and set attributes."""
-        # use the internal function to disable cache
-        if not self._is_encrypted:
-            # pylint: disable=protected-access
-            self.all_entries, self.errors, self.options = _load(
-                [(self.beancount_file_path, True)],
-                None,
-                None,
-                None,
-            )
-        else:
-            self.all_entries, self.errors, self.options = load_file(
-                self.beancount_file_path,
-            )
-
+        self.all_entries, self.errors, self.options = load_uncached(
+            self.beancount_file_path,
+            is_encrypted=self._is_encrypted,
+        )
         self.get_filtered.cache_clear()
 
         self.all_entries_by_type = group_entries_by_type(self.all_entries)
@@ -302,10 +281,20 @@ class FavaLedger:
         self.errors.extend(errors)
 
         if not self._is_encrypted:
-            self._watcher.update(*self.paths_to_watch())
+            self.watcher.update(*self.paths_to_watch())
 
-        for mod in MODULES:
-            getattr(self, mod).load_file()
+        # Call load_file of all modules.
+        self.accounts.load_file()
+        self.attributes.load_file()
+        self.budgets.load_file()
+        self.charts.load_file()
+        self.commodities.load_file()
+        self.extensions.load_file()
+        self.file.load_file()
+        self.format_decimal.load_file()
+        self.misc.load_file()
+        self.query_shell.load_file()
+        self.ingest.load_file()
 
         self.extensions.after_load_file()
 
@@ -327,7 +316,7 @@ class FavaLedger:
     @property
     def mtime(self) -> int:
         """The timestamp to the latest change of the underlying files."""
-        return self._watcher.last_checked
+        return self.watcher.last_checked
 
     @property
     def root_accounts(self) -> tuple[str, str, str, str, str]:
@@ -373,7 +362,7 @@ class FavaLedger:
         # We can't reload an encrypted file, so act like it never changes.
         if self._is_encrypted:
             return False
-        changed = self._watcher.check()
+        changed = self.watcher.check()
         if changed:
             self.load_file()
         return changed
@@ -491,9 +480,8 @@ class FavaLedger:
                 if entry_hash == hash_entry(entry)
             )
         except StopIteration as exc:
-            raise FavaAPIError(
-                f'No entry found for hash "{entry_hash}"',
-            ) from exc
+            msg = f'No entry found for hash "{entry_hash}"'
+            raise FavaAPIError(msg) from exc
 
     def context(
         self,
@@ -560,7 +548,8 @@ class FavaLedger:
         entry = self.get_entry(entry_hash)
         value = entry.meta[metadata_key]
         if not isinstance(value, str):
-            raise FavaAPIError("Statement path needs to be a string.")
+            msg = "Statement path needs to be a string."
+            raise FavaAPIError(msg)
 
         accounts = set(get_entry_accounts(entry))
         filename, _ = get_position(entry)
@@ -574,6 +563,7 @@ class FavaLedger:
             ):
                 return document.filename
 
-        raise FavaAPIError("Statement not found.")
+        msg = "Statement not found."
+        raise FavaAPIError(msg)
 
     group_entries_by_type = staticmethod(group_entries_by_type)

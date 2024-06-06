@@ -19,10 +19,8 @@ import { notify, notify_err } from "./notifications";
  * dragged from a file manager or a URL (as dragged from a document link in Fava).
  */
 function dragover(event: DragEvent, closestTarget: HTMLElement): void {
-  if (
-    event.dataTransfer?.types.includes("Files") ??
-    event.dataTransfer?.types.includes("text/uri-list")
-  ) {
+  const types = event.dataTransfer?.types ?? [];
+  if (types.includes("Files") || types.includes("text/uri-list")) {
     closestTarget.classList.add("dragover");
     event.preventDefault();
   }
@@ -78,8 +76,11 @@ function drop(event: DragEvent, target: HTMLElement): void {
     const url = event.dataTransfer.getData("URL");
     // Try to extract the filename from the URL.
     let filename = new URL(url).searchParams.get("filename");
-    if (filename && targetEntry) {
-      if (targetAccount && documentHasAccount(filename, targetAccount)) {
+    if (filename != null && targetEntry != null) {
+      if (
+        targetAccount != null &&
+        documentHasAccount(filename, targetAccount)
+      ) {
         filename = basename(filename);
       }
       put("attach_document", { filename, entry_hash: targetEntry }).then(

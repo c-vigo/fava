@@ -38,7 +38,7 @@ def setup_logging() -> None:
     logging.getLogger("werkzeug").addFilter(filter_api_changed)
 
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     Item = TypeVar("Item")
     P = ParamSpec("P")
     T = TypeVar("T")
@@ -80,7 +80,7 @@ def next_key(basekey: str, keys: Mapping[str, Any]) -> str:
         return basekey
     i = 2
     while f"{basekey}-{i}" in keys:
-        i = i + 1
+        i += 1
     return f"{basekey}-{i}"
 
 
