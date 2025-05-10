@@ -1,13 +1,17 @@
 <script lang="ts">
   import { initReadonlyQueryEditor } from "../../codemirror/setup";
 
-  export let value: string;
-  export let error = false;
+  interface Props {
+    value: string;
+    error?: boolean;
+  }
+
+  let { value, error = false }: Props = $props();
 
   const { renderEditor } = initReadonlyQueryEditor(value);
 </script>
 
-<pre class:error use:renderEditor />
+<pre class:error use:renderEditor></pre>
 
 <style>
   .error {

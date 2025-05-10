@@ -19,8 +19,8 @@ from typing import Any
 from beancount.parser.parser import parse_string
 
 from fava.beans import create
-from fava.beans.abc import Amount
 from fava.beans.abc import Balance
+from fava.beans.abc import Custom
 from fava.beans.abc import Directive
 from fava.beans.abc import Posting
 from fava.beans.abc import Transaction
@@ -30,10 +30,17 @@ from fava.helpers import FavaAPIError
 from fava.util.date import parse_date
 
 
+class InvalidAmountError(FavaAPIError):
+    """Invalid amount."""
+
+    def __init__(self, amount: str) -> None:
+        super().__init__(f"Invalid amount: {amount}")
+
+
 @singledispatch
 def serialise(entry: Directive | Posting) -> Any:
     """Serialise an entry or posting."""
-    if not isinstance(entry, Directive):
+    if not isinstance(entry, Directive):  # pragma: no cover
         msg = f"Unsupported object {entry}"
         raise TypeError(msg)
     ret = entry._asdict()  # type: ignore[attr-defined]
@@ -53,6 +60,15 @@ def _(entry: Transaction) -> Any:
     return ret
 
 
+@serialise.register(Custom)
+def _(entry: Custom) -> Any:
+    """Serialise an entry."""
+    ret = entry._asdict()  # type: ignore[attr-defined]
+    ret["t"] = "Custom"
+    ret["values"] = [v.value for v in entry.values]
+    return ret
+
+
 @serialise.register(Balance)
 def _(entry: Balance) -> Any:
     """Serialise an entry."""
@@ -66,9 +82,7 @@ def _(entry: Balance) -> Any:
 @serialise.register(Posting)
 def _(posting: Posting) -> Any:
     """Serialise a posting."""
-    position_str = (
-        to_string(posting) if isinstance(posting.units, Amount) else ""
-    )
+    position_str = to_string(posting) if posting.units is not None else ""
 
     if posting.price is not None:
         position_str += f" @ {to_string(posting.price)}"
@@ -86,10 +100,9 @@ def deserialise_posting(posting: Any) -> Posting:
         f'2000-01-01 * "" ""\n Assets:Account {amount}',
     )
     if errors:
-        msg = f"Invalid amount: {amount}"
-        raise FavaAPIError(msg)
+        raise InvalidAmountError(amount)
     txn = entries[0]
-    if not isinstance(txn, Transaction):
+    if not isinstance(txn, Transaction):  # pragma: no cover
         msg = "Expected transaction"
         raise TypeError(msg)
     pos = txn.postings[0]
@@ -117,35 +130,34 @@ def deserialise(json_entry: Any) -> Directive:
     if json_entry["t"] == "Transaction":
         postings = [deserialise_posting(pos) for pos in json_entry["postings"]]
         return create.transaction(
-            json_entry["meta"],
-            date,
-            json_entry.get("flag", ""),
-            json_entry.get("payee", ""),
-            json_entry["narration"] or "",
-            frozenset(json_entry["tags"]),
-            frozenset(json_entry["links"]),
-            postings,
+            meta=json_entry["meta"],
+            date=date,
+            flag=json_entry.get("flag", ""),
+            payee=json_entry.get("payee", ""),
+            narration=json_entry["narration"] or "",
+            tags=frozenset(json_entry["tags"]),
+            links=frozenset(json_entry["links"]),
+            postings=postings,
         )
     if json_entry["t"] == "Balance":
         raw_amount = json_entry["amount"]
         amount = create.amount(
-            Decimal(raw_amount["number"]),
-            raw_amount["currency"],
+            Decimal(raw_amount["number"]), raw_amount["currency"]
         )
 
         return create.balance(
-            json_entry["meta"],
-            date,
-            json_entry["account"],
-            amount,
+            meta=json_entry["meta"],
+            date=date,
+            account=json_entry["account"],
+            amount=amount,
         )
     if json_entry["t"] == "Note":
         comment = json_entry["comment"].replace('"', "")
         return create.note(
-            json_entry["meta"],
-            date,
-            json_entry["account"],
-            comment,
+            meta=json_entry["meta"],
+            date=date,
+            account=json_entry["account"],
+            comment=comment,
         )
     msg = "Unsupported entry type."
     raise FavaAPIError(msg)

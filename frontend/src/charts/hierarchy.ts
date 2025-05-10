@@ -1,10 +1,12 @@
 import { sum } from "d3-array";
-import { hierarchy as d3Hierarchy } from "d3-hierarchy";
 import type { HierarchyNode } from "d3-hierarchy";
+import { hierarchy as d3Hierarchy } from "d3-hierarchy";
+import type { Writable } from "svelte/store";
+import { writable } from "svelte/store";
 
 import type { Result } from "../lib/result";
 import type { TreeNode } from "../lib/tree";
-import type { Validator } from "../lib/validation";
+import type { ValidationError, Validator } from "../lib/validation";
 import {
   array,
   boolean,
@@ -18,7 +20,7 @@ import {
   unknown,
 } from "../lib/validation";
 import { notify_warn } from "../notifications";
-
+import { sort_by_strings } from "../sort";
 import type { ChartContext } from "./context";
 
 /** The data provided with a fava.core.tree.SerialisedTreeNode. */
@@ -68,19 +70,37 @@ export function addInternalNodesAsLeaves({
 export class HierarchyChart {
   readonly type = "hierarchy";
 
+  /** All currencies for which we have an hierarchy. */
+  readonly currencies: readonly string[];
+
+  /** The currency to show the treemap of. */
+  readonly treemap_currency: Writable<string> | null;
+
   constructor(
     readonly name: string | null,
     readonly data: ReadonlyMap<string, AccountHierarchyNode>,
-  ) {}
+  ) {
+    this.currencies = [...this.data.keys()];
+    const first_currency = this.currencies[0];
+    this.treemap_currency =
+      first_currency != null ? writable<string>(first_currency) : null;
+  }
 }
+
+const sort_children = (values: AccountTreeNode[]) =>
+  sort_by_strings(values, (v) => v.account);
+
+const inventory = record(number);
 
 export const account_hierarchy_validator: Validator<AccountTreeNode> = object({
   account: string,
-  balance: record(number),
-  balance_children: record(number),
-  children: lazy(() => array(account_hierarchy_validator)),
-  cost: optional(record(number)),
-  cost_children: optional(record(number)),
+  balance: inventory,
+  balance_children: inventory,
+  children: lazy(
+    () => (json) => array(account_hierarchy_validator)(json).map(sort_children),
+  ),
+  cost: optional(inventory),
+  cost_children: optional(inventory),
   has_txns: defaultValue(boolean, () => false),
 });
 
@@ -108,7 +128,7 @@ export function hierarchy_from_parsed_data(
           ).sort((a, b) => sign * ((b.value ?? 0) - (a.value ?? 0)));
           return [currency, r] as const;
         })
-        .filter(([, h]) => h.value),
+        .filter(([, h]) => h.value != null && h.value !== 0),
     ),
   );
 }
@@ -122,7 +142,7 @@ export function hierarchy(
   label: string | null,
   json: unknown,
   $chartContext: ChartContext,
-): Result<HierarchyChart, string> {
+): Result<HierarchyChart, ValidationError> {
   const with_modifier = hierarchy_data_with_modifier(json);
   if (with_modifier.is_ok) {
     notify_warn(

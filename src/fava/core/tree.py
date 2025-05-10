@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from operator import attrgetter
-from typing import Dict
-from typing import Iterable
 from typing import TYPE_CHECKING
 
 from fava.beans.abc import Open
@@ -19,6 +17,10 @@ from fava.core.inventory import CounterInventory
 
 if TYPE_CHECKING:  # pragma: no cover
     import datetime
+    from collections.abc import Iterable
+    from collections.abc import Sequence
+
+    from beancount.core import data
 
     from fava.beans.abc import Directive
     from fava.beans.prices import FavaPriceMap
@@ -34,7 +36,7 @@ class SerialisedTreeNode:
     account: str
     balance: SimpleCounterInventory
     balance_children: SimpleCounterInventory
-    children: list[SerialisedTreeNode]
+    children: Sequence[SerialisedTreeNode]
     has_txns: bool
 
 
@@ -115,7 +117,7 @@ class TreeNode:
         )
 
 
-class Tree(Dict[str, TreeNode]):
+class Tree(dict[str, TreeNode]):
     """Account tree.
 
     Args:
@@ -125,7 +127,7 @@ class Tree(Dict[str, TreeNode]):
 
     def __init__(
         self,
-        entries: Iterable[Directive] | None = None,
+        entries: Iterable[Directive | data.Directive] | None = None,
         create_accounts: list[str] | None = None,
     ) -> None:
         super().__init__(self)

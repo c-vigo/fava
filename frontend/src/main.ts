@@ -19,9 +19,9 @@ import "../css/help.css";
 import "../css/journal-table.css";
 import "../css/notifications.css";
 import "../css/tree-table.css";
-
 // Polyfill for customised builtin elements in Webkit
 import "@ungap/custom-elements";
+
 import { get as store_get } from "svelte/store";
 
 import { get } from "./api";
@@ -39,7 +39,7 @@ import { frontend_routes } from "./reports/routes";
 import router, { setStoreValuesFromURL, syncStoreValuesToURL } from "./router";
 import { initSidebar } from "./sidebar";
 import { has_changes, updatePageTitle } from "./sidebar/page-title";
-import { SortableTable } from "./sort";
+import { SortableTable } from "./sort/sortable-table";
 import { errors, fava_options, ledgerData } from "./stores";
 import { ledger_mtime, read_mtime } from "./stores/mtime";
 import { SvelteCustomElement } from "./svelte-custom-elements";
@@ -79,7 +79,7 @@ function onChanges() {
     .catch((e: unknown) => {
       notify_err(e, (err) => `Error fetching ledger data: ${err.message}`);
     });
-  if (store_get(fava_options).auto_reload) {
+  if (store_get(fava_options).auto_reload && !router.hasInteruptHandler) {
     router.reload();
   } else {
     get("errors").then((v) => {

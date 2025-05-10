@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import errno
-import logging
 import os
 from pathlib import Path
 
@@ -14,11 +13,12 @@ from werkzeug.middleware.profiler import ProfilerMiddleware
 
 from fava import __version__
 from fava.application import create_app
+from fava.util import setup_debug_logging
 from fava.util import simple_wsgi
 
 
 class AddressInUse(click.ClickException):  # noqa: D101
-    def __init__(self, port: int) -> None:
+    def __init__(self, port: int) -> None:  # pragma: no cover
         super().__init__(
             f"Cannot start Fava because port {port} is already in use."
             "\nPlease choose a different port with the '-p' option.",
@@ -33,22 +33,23 @@ class NonAbsolutePathError(click.UsageError):  # noqa: D101
 
 
 class NoFileSpecifiedError(click.UsageError):  # noqa: D101
-    def __init__(self) -> None:
+    def __init__(self) -> None:  # pragma: no cover
         super().__init__("No file specified")
 
 
-def _add_env_filenames(filenames: tuple[str, ...]) -> set[str]:
+def _add_env_filenames(filenames: tuple[str, ...]) -> tuple[str, ...]:
     """Read additional filenames from BEANCOUNT_FILE."""
     env_filename = os.environ.get("BEANCOUNT_FILE")
     if not env_filename:
-        return set(filenames)
+        return tuple(dict.fromkeys(filenames))
 
     env_names = env_filename.split(os.pathsep)
     for name in env_names:
         if not Path(name).is_absolute():
             raise NonAbsolutePathError(name)
 
-    return set(filenames + tuple(env_names))
+    all_names = tuple(env_names) + filenames
+    return tuple(dict.fromkeys(all_names))
 
 
 @click.command(context_settings={"auto_envvar_prefix": "FAVA"})
@@ -97,8 +98,11 @@ def _add_env_filenames(filenames: tuple[str, ...]) -> set[str]:
     type=click.Path(),
     help="Output directory for profiling data.",
 )
+@click.option(
+    "--poll-watcher", is_flag=True, help="Use old polling-based watcher."
+)
 @click.version_option(version=__version__, prog_name="fava")
-def main(
+def main(  # noqa: PLR0913
     *,
     filenames: tuple[str, ...] = (),
     port: int = 5000,
@@ -109,6 +113,7 @@ def main(
     debug: bool = False,
     profile: bool = False,
     profile_dir: str | None = None,
+    poll_watcher: bool = False,
 ) -> None:  # pragma: no cover
     """Start Fava for FILENAMES on http://<host>:<port>.
 
@@ -129,6 +134,7 @@ def main(
         all_filenames,
         incognito=incognito,
         read_only=read_only,
+        poll_watcher=poll_watcher,
     )
 
     if prefix:
@@ -155,7 +161,7 @@ def main(
                 raise AddressInUse(port) from error
             raise click.Abort from error
     else:
-        logging.getLogger("fava").setLevel(logging.DEBUG)
+        setup_debug_logging()
         if profile:
             app.wsgi_app = ProfilerMiddleware(  # type: ignore[method-assign]
                 app.wsgi_app,

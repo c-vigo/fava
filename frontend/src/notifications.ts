@@ -1,3 +1,4 @@
+import { errorWithCauses } from "./lib/errors";
 import { log_error } from "./log";
 
 /** The notification list div, lazily created. */
@@ -52,14 +53,17 @@ export function notify(
  */
 export function notify_warn(msg: string): void {
   notify(msg, "warning");
-  // eslint-disable-next-line no-console
+
   console.warn(msg);
 }
 
 /**
  * Notify the user about an error and log to console.
  */
-export function notify_err(error: unknown, msg: (e: Error) => string): void {
+export function notify_err(
+  error: unknown,
+  msg: (e: Error) => string = errorWithCauses,
+): void {
   if (error instanceof Error) {
     notify(msg(error), "error");
   }

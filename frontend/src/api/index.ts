@@ -1,14 +1,22 @@
+import { get as store_get } from "svelte/store";
+
 import type { Entry } from "../entries";
-import { urlFor } from "../helpers";
+import { urlForRaw } from "../helpers";
 import { fetchJSON } from "../lib/fetch";
 import type { ValidationT } from "../lib/validation";
 import { string } from "../lib/validation";
 import { notify, notify_err } from "../notifications";
 import router from "../router";
 import type { Filters, FiltersConversionInterval } from "../stores/filters";
-
 import type { GetAPIValidators, SourceFile } from "./validators";
 import { getAPIValidators } from "./validators";
+
+class InvalidResponseDataError extends Error {
+  constructor(cause: Error) {
+    super("Invalid data returned in API request.", { cause });
+    notify_err(this);
+  }
+}
 
 /** Required arguments for the various PUT API endpoints. */
 interface PutAPIInputs {
@@ -39,14 +47,14 @@ export async function put<T extends keyof PutAPIInputs>(
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         };
-  const url = urlFor(`api/${endpoint}`);
+  const $urlForRaw = store_get(urlForRaw);
+  const url = $urlForRaw(`api/${endpoint}`);
   const json = await fetchJSON(url, { method: "PUT", ...opts });
   const res = string(json);
   if (res.is_ok) {
     return res.value;
   }
-  notify(`Invalid data returned in API request: ${res.error}`, "error");
-  throw new Error(res.error);
+  throw new InvalidResponseDataError(res.error);
 }
 
 interface GetAPIParams {
@@ -64,9 +72,10 @@ interface GetAPIParams {
   trial_balance: FiltersConversionInterval;
   ledger_data: undefined;
   move: { filename: string; account: string; new_name: string };
+  options: undefined;
   payee_accounts: { payee: string };
   payee_transaction: { payee: string };
-  query_result: Filters & { query_string: string };
+  query: Filters & { query_string: string };
   source: { filename: string };
 }
 
@@ -82,14 +91,14 @@ export async function get<T extends keyof GetAPIParams>(
     ? [undefined?, number?]
     : [GetAPIParams[T], number?]
 ): Promise<ValidationT<GetAPIValidators[T]>> {
-  const url = urlFor(`api/${endpoint}`, params, false);
+  const $urlForRaw = store_get(urlForRaw);
+  const url = $urlForRaw(`api/${endpoint}`, params);
   const json = await fetchJSON(url);
   const res = getAPIValidators[endpoint](json);
   if (res.is_ok) {
     return res.value as ValidationT<GetAPIValidators[T]>;
   }
-  notify(`Invalid data returned in API request: ${res.error}`, "error");
-  throw new Error(res.error);
+  throw new InvalidResponseDataError(res.error);
 }
 
 interface DeleteAPIParams {
@@ -107,14 +116,14 @@ export async function doDelete<T extends keyof DeleteAPIParams>(
   endpoint: T,
   params: DeleteAPIParams[T],
 ): Promise<string> {
-  const url = urlFor(`api/${endpoint}`, params, false);
+  const $urlForRaw = store_get(urlForRaw);
+  const url = $urlForRaw(`api/${endpoint}`, params);
   const json = await fetchJSON(url, { method: "DELETE" });
   const res = string(json);
   if (res.is_ok) {
     return res.value;
   }
-  notify(`Invalid data returned in API request: ${res.error}`, "error");
-  throw new Error(res.error);
+  throw new InvalidResponseDataError(res.error);
 }
 
 /**
@@ -134,7 +143,7 @@ export async function moveDocument(
     notify(msg);
     return true;
   } catch (error) {
-    notify_err(error, (e) => e.message);
+    notify_err(error);
     return false;
   }
 }
@@ -150,7 +159,7 @@ export async function deleteDocument(filename: string): Promise<boolean> {
     notify(msg);
     return true;
   } catch (error) {
-    notify_err(error, (e) => e.message);
+    notify_err(error);
     return false;
   }
 }

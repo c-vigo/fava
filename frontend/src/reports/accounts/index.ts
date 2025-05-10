@@ -1,8 +1,9 @@
 import { get } from "../../api";
+import type { AccountBudget } from "../../api/validators";
+import type { AccountTreeNode } from "../../charts/hierarchy";
 import { getUrlPath } from "../../helpers";
 import { getURLFilters } from "../../stores/filters";
 import { Route } from "../route";
-
 import AccountReport from "./AccountReport.svelte";
 
 export type AccountReportType = "journal" | "balances" | "changes";
@@ -10,7 +11,17 @@ export type AccountReportType = "journal" | "balances" | "changes";
 const to_report_type = (s: string | null): AccountReportType =>
   s === "balances" || s === "changes" ? s : "journal";
 
-export const account_report = new Route(
+export interface AccountReportProps {
+  account: string;
+  report_type: AccountReportType;
+  charts: unknown;
+  journal: string | null;
+  interval_balances: AccountTreeNode[] | null;
+  dates: { begin: Date; end: Date }[] | null;
+  budgets: Record<string, AccountBudget[]> | null;
+}
+
+export const account_report = new Route<AccountReportProps>(
   "account",
   AccountReport,
   async (url) => {
@@ -21,11 +32,7 @@ export const account_report = new Route(
       a: account,
       r: report_type,
     });
-    return {
-      ...res,
-      account,
-      report_type: to_report_type(report_type),
-    };
+    return { ...res, account, report_type };
   },
   (route) => {
     if (route.url) {

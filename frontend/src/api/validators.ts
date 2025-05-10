@@ -19,7 +19,7 @@ import {
   tuple,
   unknown,
 } from "../lib/validation";
-import type { ImportableFile } from "../reports/import";
+import { query_validator } from "../reports/query/query_table";
 
 /** A Beancount error that should be shown to the user in the list of errors. */
 export interface BeancountError {
@@ -115,7 +115,7 @@ export const ledgerDataValidator = object({
 
 export type LedgerData = ValidationT<typeof ledgerDataValidator>;
 
-const importable_files_validator = array<ImportableFile>(
+const importable_files_validator = array(
   object({
     name: string,
     basename: string,
@@ -123,8 +123,8 @@ const importable_files_validator = array<ImportableFile>(
       object({
         account: string,
         importer_name: string,
-        date: optional(string),
-        name: optional(string),
+        date: string,
+        name: string,
       }),
     ),
   }),
@@ -190,9 +190,13 @@ export const getAPIValidators = {
   income_statement: tree_report,
   ledger_data: ledgerDataValidator,
   move: string,
+  options: object({
+    fava_options: record(string),
+    beancount_options: record(string),
+  }),
   payee_accounts: array(string),
   payee_transaction: Transaction.validator,
-  query_result: object({ chart: unknown, table: string }),
+  query: query_validator,
   source,
   trial_balance: tree_report,
 };

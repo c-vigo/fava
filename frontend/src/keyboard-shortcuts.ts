@@ -157,7 +157,7 @@ export type KeySpec =
 
 const isMac =
   // This still seems to be the least bad way to check whether we are running on macOS or iOS
-  // eslint-disable-next-line deprecation/deprecation
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
   navigator.platform.startsWith("Mac") || navigator.platform === "iPhone";
 
 export const modKey = isMac ? "Cmd" : "Ctrl";
@@ -170,7 +170,7 @@ function getKeySpecKey(spec: KeySpec): KeyCombo {
   if (typeof spec === "string") {
     return spec;
   }
-  return isMac ? spec.mac ?? spec.key : spec.key;
+  return isMac ? (spec.mac ?? spec.key) : spec.key;
 }
 
 /**
@@ -181,7 +181,7 @@ function getKeySpecDescription(spec: KeySpec): string {
   if (typeof spec === "string") {
     return spec;
   }
-  const key = isMac ? spec.mac ?? spec.key : spec.key;
+  const key = isMac ? (spec.mac ?? spec.key) : spec.key;
   return spec.note != null ? `${key} - ${spec.note}` : key;
 }
 
@@ -195,11 +195,9 @@ function bindKey(spec: KeySpec, handler: KeyboardShortcutAction): () => void {
   const key = getKeySpecKey(spec);
   const sequence = key.split(" ");
   if (sequence.length > 2) {
-    // eslint-disable-next-line no-console
     console.error("Only key sequences of length <=2 are supported: ", key);
   }
   if (keyboardShortcuts.has(key)) {
-    // eslint-disable-next-line no-console
     console.warn("Duplicate keyboard shortcut: ", key, handler);
   }
   keyboardShortcuts.set(key, handler);

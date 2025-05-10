@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gettext
 import logging
 import re
 import time
@@ -15,27 +16,47 @@ from flask import abort
 from flask import send_file
 
 if TYPE_CHECKING:  # pragma: no cover
+    from collections.abc import Callable
+    from collections.abc import Iterable
     from collections.abc import Mapping
     from typing import Any
-    from typing import Callable
-    from typing import Iterable
     from typing import ParamSpec
     from typing import TypeVar
+    from wsgiref.types import StartResponse
+    from wsgiref.types import WSGIEnvironment
 
-    from _typeshed.wsgi import StartResponse
-    from _typeshed.wsgi import WSGIEnvironment
+    from babel import Locale
     from flask.wrappers import Response
 
 
-def filter_api_changed(record: logging.LogRecord) -> bool:
+def filter_api_changed(record: logging.LogRecord) -> bool:  # pragma: no cover
     """Filter out LogRecords for requests that poll for changes."""
     return "/api/changed HTTP" not in record.getMessage()
 
 
 def setup_logging() -> None:
     """Set up logging for Fava."""
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.basicConfig(level=logging.WARNING, format="%(message)s")
     logging.getLogger("werkzeug").addFilter(filter_api_changed)
+
+
+def setup_debug_logging() -> None:  # pragma: no cover
+    """Set up debug level logging for Fava."""
+    logging.getLogger().setLevel(logging.DEBUG)
+    logging.getLogger("watchfiles").setLevel(logging.INFO)
+
+
+def get_translations(locale: Locale) -> str | None:
+    """Check whether Fava has translations for the locale.
+
+    Args:
+        locale: The locale to search for
+
+    Returns:
+        The path to the found translations or None if none matched.
+    """
+    translations_dir = Path(__file__).parent.parent / "translations"
+    return gettext.find("messages", str(translations_dir), [str(locale)])
 
 
 if TYPE_CHECKING:  # pragma: no cover

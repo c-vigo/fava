@@ -5,14 +5,13 @@ from __future__ import annotations
 import re
 from abc import ABC
 from abc import abstractmethod
+from decimal import Decimal
 from typing import Any
-from typing import Callable
-from typing import Iterable
 from typing import TYPE_CHECKING
 
 import ply.yacc  # type: ignore[import-untyped]
 from beancount.core import account
-from beancount.ops.summarize import clamp_opt  # type: ignore[import-untyped]
+from beancount.ops.summarize import clamp_opt
 
 from fava.beans.account import get_entry_accounts
 from fava.helpers import FavaAPIError
@@ -20,6 +19,10 @@ from fava.util.date import DateRange
 from fava.util.date import parse_date
 
 if TYPE_CHECKING:  # pragma: no cover
+    from collections.abc import Callable
+    from collections.abc import Iterable
+    from collections.abc import Sequence
+
     from fava.beans.abc import Directive
     from fava.beans.types import BeancountOptions
     from fava.core.fava_options import FavaOptions
@@ -73,22 +76,35 @@ class Token:
         self.type = type_
         self.value = value
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # pragma: no cover
         return f"Token({self.type}, {self.value})"
 
 
 class FilterSyntaxLexer:
     """Lexer for Fava's filter syntax."""
 
-    tokens = ("ANY", "ALL", "KEY", "LINK", "STRING", "TAG")
+    tokens = (
+        "ANY",
+        "ALL",
+        "CMP_OP",
+        "EQ_OP",
+        "KEY",
+        "LINK",
+        "NUMBER",
+        "STRING",
+        "TAG",
+    )
 
     RULES = (
         ("LINK", r"\^[A-Za-z0-9\-_/.]+"),
         ("TAG", r"\#[A-Za-z0-9\-_/.]+"),
-        ("KEY", r"[a-z][a-zA-Z0-9\-_]+:"),
         ("ALL", r"all\("),
         ("ANY", r"any\("),
-        ("STRING", r'\w[-\w]*|"[^"]*"|\'[^\']*\''),
+        ("KEY", r"[a-z][a-zA-Z0-9\-_]+(?=\s*(:|=|>=|<=|<|>))"),
+        ("EQ_OP", r":"),
+        ("CMP_OP", r"(=|>=|<=|<|>)"),
+        ("NUMBER", r"\d*\.?\d+"),
+        ("STRING", r"""\w[-\w]*|"[^"]*"|'[^']*'"""),
     )
 
     regex = re.compile(
@@ -102,13 +118,22 @@ class FilterSyntaxLexer:
         return token, value[1:]
 
     def KEY(self, token: str, value: str) -> tuple[str, str]:  # noqa: N802
-        return token, value[:-1]
+        return token, value
 
     def ALL(self, token: str, _: str) -> tuple[str, str]:  # noqa: N802
         return token, token
 
     def ANY(self, token: str, _: str) -> tuple[str, str]:  # noqa: N802
         return token, token
+
+    def EQ_OP(self, token: str, value: str) -> tuple[str, str]:  # noqa: N802
+        return token, value
+
+    def CMP_OP(self, token: str, value: str) -> tuple[str, str]:  # noqa: N802
+        return token, value
+
+    def NUMBER(self, token: str, value: str) -> tuple[str, Decimal]:  # noqa: N802
+        return token, Decimal(value)
 
     def STRING(self, token: str, value: str) -> tuple[str, str]:  # noqa: N802
         if value[0] in {'"', "'"}:
@@ -140,7 +165,7 @@ class FilterSyntaxLexer:
                 value = match.group()
                 pos += len(value)
                 token = match.lastgroup
-                if token is None:
+                if token is None:  # pragma: no cover
                     msg = "Internal Error"
                     raise ValueError(msg)
                 func: Callable[[str, str], tuple[str, str]] = getattr(
@@ -161,15 +186,42 @@ class Match:
 
     __slots__ = ("match",)
 
+    match: Callable[[str], bool]
+
     def __init__(self, search: str) -> None:
         try:
             match = re.compile(search, re.IGNORECASE).search
-            self.match: Callable[[str], bool] = lambda s: bool(match(s))
+            self.match = lambda s: bool(match(s))
         except re.error:
             self.match = lambda s: s == search
 
-    def __call__(self, string: str) -> bool:
-        return self.match(string)
+    def __call__(self, obj: Any) -> bool:
+        return self.match(str(obj))
+
+
+class MatchAmount:
+    """Matches an amount."""
+
+    __slots__ = ("match",)
+
+    match: Callable[[Decimal], bool]
+
+    def __init__(self, op: str, value: Decimal) -> None:
+        if op == "=":
+            self.match = lambda x: x == value
+        elif op == ">=":
+            self.match = lambda x: x >= value
+        elif op == "<=":
+            self.match = lambda x: x <= value
+        elif op == ">":
+            self.match = lambda x: x > value
+        else:  # op == "<":
+            self.match = lambda x: x < value
+
+    def __call__(self, obj: Any) -> bool:
+        # Compare to the absolute value to simplify this filter.
+        number = getattr(obj, "number", None)
+        return self.match(abs(number)) if number is not None else False
 
 
 class FilterSyntaxParser:
@@ -298,26 +350,44 @@ class FilterSyntaxParser:
 
     def p_simple_expr_key(self, p: list[Any]) -> None:
         """
-        simple_expr : KEY STRING
+        simple_expr : KEY EQ_OP STRING
+                    | KEY CMP_OP NUMBER
         """
-        key, value = p[1], p[2]
-        match = Match(value)
+        key, op, value = p[1], p[2], p[3]
+        match: Match | MatchAmount = (
+            Match(value) if op == ":" else MatchAmount(op, value)
+        )
 
         def _key(entry: Directive) -> bool:
             if hasattr(entry, key):
-                return match(str(getattr(entry, key) or ""))
+                return match(getattr(entry, key) or "")
             if entry.meta is not None and key in entry.meta:
-                return match(str(entry.meta.get(key)))
+                return match(entry.meta.get(key))
             return False
 
         p[0] = _key
+
+    def p_simple_expr_units(self, p: list[Any]) -> None:
+        """
+        simple_expr : CMP_OP NUMBER
+        """
+        op, value = p[1], p[2]
+        match = MatchAmount(op, value)
+
+        def _range(entry: Directive) -> bool:
+            return any(
+                match(posting.units)
+                for posting in getattr(entry, "postings", [])
+            )
+
+        p[0] = _range
 
 
 class EntryFilter(ABC):
     """Filters a list of entries."""
 
     @abstractmethod
-    def apply(self, entries: list[Directive]) -> list[Directive]:
+    def apply(self, entries: Sequence[Directive]) -> Sequence[Directive]:
         """Filter a list of directives."""
 
 
@@ -338,14 +408,14 @@ class TimeFilter(EntryFilter):
             raise TimeFilterParseError(value)
         self.date_range = DateRange(begin, end)
 
-    def apply(self, entries: list[Directive]) -> list[Directive]:
-        entries, _ = clamp_opt(
-            entries,
+    def apply(self, entries: Sequence[Directive]) -> Sequence[Directive]:
+        clamped_entries, _ = clamp_opt(
+            entries,  # type: ignore[arg-type]
             self.date_range.begin,
             self.date_range.end,
             self._options,
         )
-        return entries
+        return clamped_entries  # type: ignore[return-value]
 
 
 LEXER = FilterSyntaxLexer()
@@ -373,9 +443,9 @@ class AdvancedFilter(EntryFilter):
             exception.message += value
             raise
 
-    def apply(self, entries: list[Directive]) -> list[Directive]:
-        _include = self._include
-        return [entry for entry in entries if _include(entry)]
+    def apply(self, entries: Sequence[Directive]) -> Sequence[Directive]:
+        include = self._include
+        return [entry for entry in entries if include(entry)]
 
 
 class AccountFilter(EntryFilter):
@@ -390,7 +460,7 @@ class AccountFilter(EntryFilter):
         self._value = value
         self._match = Match(value)
 
-    def apply(self, entries: list[Directive]) -> list[Directive]:
+    def apply(self, entries: Sequence[Directive]) -> Sequence[Directive]:
         value = self._value
         if not value:
             return entries

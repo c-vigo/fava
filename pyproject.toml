@@ -3,7 +3,7 @@ name = "fava"
 dynamic = ["version"]
 description = "Web interface for the accounting tool Beancount."
 readme = "README.rst"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {text = "MIT License"}
 authors = [
   {name = "Dominik Aumayr", email = "dominik@aumayr.name"}
@@ -24,22 +24,23 @@ classifiers = [
     "Natural Language :: English",
     "Programming Language :: JavaScript",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
     "Topic :: Office/Business :: Financial :: Accounting",
     "Topic :: Office/Business :: Financial :: Investment",
 ]
 dependencies = [
-    "Babel>=2.7,<3",
-    "Flask-Babel>=1,<5",
+    "Babel>=2.11,<3",
+    "Flask-Babel>=3,<5",
     "Flask>=2.2,<4",
     "Jinja2>=3,<4",
     "Werkzeug>=2.2,<4",
-    "beancount>=2.3.5,<3",
+    "beancount>=2,<4",
+    "beanquery>=0.1,<0.3",
+    "beangulp>=0.1",
     "cheroot>=8,<11",
     "click>=7,<9",
     "markdown2>=2.3.0,<3",
@@ -67,26 +68,39 @@ excel =[
 ]
 # Extra dependencies that are used in tests or for linting.
 dev = [
-    "build",
-    "furo",
-    "mypy",
-    "pre-commit",
-    "pyinstaller",
-    "pylint",
-    "pytest",
-    "pytest-cov",
-    "setuptools",
-    "sphinx",
-    "sphinx-autodoc-typehints",
-    "tox",
-    "tox-uv",
-    "twine",
-    "types-setuptools",
-    "types-simplejson",
+    "build>=1",
+    "furo>=2024",
+    "mypy>=1.14",
+    "pre-commit>=4",
+    "pytest>=8",
+    "pytest-cov>=6",
+    "requests>=2",
+    "setuptools>=67",
+    "sphinx>=7",
+    "sphinx-autodoc-typehints>=2",
+    "tox>=4",
+    "tox-uv>=1",
+    "twine>=5",
+    "types-setuptools>=67",
+    "types-simplejson>=3",
+]
+# Pin some lower bounds for transitive dependencies in the old_deps tests
+# This a basically determined by increasing them until getting a combination that runs.
+old_deps_pins = [
+    "bottle>=0.12.20",  # older ones didn't build
+    "importlib_metadata>=3.6",
+    "jaraco-functools>=4",
+    "lxml>=5.3.0",  # older ones don't have wheels for recent Python versions
+    "more-itertools>=6",
+    "pytest>=7.2",  # also used for running the tests of Fava, needs to somewhat recent
+    "python-dateutil>=2",
+    "pytz>=2020",
+    "setuptools>=67",
+    "six>=1.16",
 ]
 
 [build-system]
-requires = ["setuptools>=60", "setuptools_scm>=8.0", "Babel>=2.7,<3", "wheel"]
+requires = ["setuptools>=67", "setuptools_scm>=8.0", "Babel>=2.7,<3", "wheel"]
 build-backend = "_build_backend"
 backend-path = ["."]
 
@@ -103,33 +117,25 @@ preview = true
 mypy_path = "stubs"
 strict = true
 
-[tool.pylint.'messages control']
-disable = [
-    "too-few-public-methods",
-    "too-many-branches",              # is checked by ruff (PLR0912)
-    "too-many-instance-attributes",
-    "too-many-locals",                # is checked by ruff (PLR0914)
-    "duplicate-code",
-    "stop-iteration-return",
-    "invalid-unary-operand-type",    # type-checking like, had false-positives
-    "not-an-iterable",               # type-checking like, had false-positives
-    "unsubscriptable-object",        # type-checking like, had false-positives
-    "broad-except",                  # is checked by ruff (BLE)
-    "too-many-return-statements",    # is checked by ruff (PLR0911)
-    "too-many-arguments",            # is checked by ruff (PLR0913)
-    "redefined-builtin",             # is checked by ruff (A002)
-    "protected-access",              # is checked by ruff (SLF001)
-    "invalid-name",                  # is checked by ruff (N)
-    "missing-docstring",             # is checked by ruff (D)
-    "redefined-outer-name",          # false positives for pytest fixtures
-]
-
 [tool.pytest.ini_options]
 filterwarnings = "ignore:.*locked_cached_property.*deprecated:DeprecationWarning"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+omit = [
+    "*/fava/beans/types.py",
+    "*/fava/ext/auto_commit.py",
+    "*/fava/ext/portfolio_list/__init__.py",
+ ]
+
+[tool.coverage.paths]
+source = [
+    "src/fava/",
+    ".tox/**/fava/",
+]
 
 [tool.ruff]
-target-version = "py38"
-preview = true
 line-length = 79
 
 [tool.ruff.lint]
@@ -141,6 +147,9 @@ extend-ignore = [
     "C901",     # ignore mccabe complecity for now
     "CPY",      # no copyright notices in all files
     "COM812",   # better handled by formatter - avoid having trailing commas everywhere
+    "DOC201",   # allow returns not to be documented for now
+    "DOC501",   # allow raised exception not to be documented for now
+    "DOC502",   # allow documented exceptions that are not explicitly raised
     "D105",     # allow magic methods to be undocumented
     "D107",     # allow __init__ to be undocumented - the class should be.
     "PD",       # pandas-related, has false-positives
@@ -168,9 +177,37 @@ max-args = 9
 
 [tool.ruff.lint.per-file-ignores]
 "contrib/**" = ["D", "INP"]
-"docs/**" = ["D", "ANN", "INP"]
+"docs/**" = ["D", "INP"]
 "tests/conftest.py" = ["S101"]
 "tests/test_*.py" = ["D", "PLC2701", "S101", "SLF001"]
 "tests/data/import_config.py" = ["D", "INP"]
-"stubs/**" = ["D"]
 "src/fava/core/filters.py" = ["D"]
+
+# pylint is not run as part of linting for Fava anymore but we keep these disables
+# around for devs who might have pylint automatically run by their editors to avoid
+# a ton of pylint warnings
+# mypy with strict settings handles most of the whole-project analysis where pylint
+# still shines - the simpler rules are mostly covered by ruff
+[tool.pylint.'messages control']
+disable = [
+    "too-few-public-methods",
+    "too-many-branches",              # is checked by ruff (PLR0912)
+    "too-many-instance-attributes",
+    "too-many-locals",                # is checked by ruff (PLR0914)
+    "duplicate-code",
+    "unused-argument",                # is checked by ruff (ARG001)
+    "stop-iteration-return",
+    "ungrouped-imports",
+    "invalid-unary-operand-type",    # type-checking like, had false-positives
+    "not-an-iterable",               # type-checking like, had false-positives
+    "unsubscriptable-object",        # type-checking like, had false-positives
+    "broad-except",                  # is checked by ruff (BLE)
+    "too-many-return-statements",    # is checked by ruff (PLR0911)
+    "too-many-arguments",            # is checked by ruff (PLR0913)
+    "too-many-positional-arguments", # is checked by ruff (PLR0917)
+    "redefined-builtin",             # is checked by ruff (A002)
+    "protected-access",              # is checked by ruff (SLF001)
+    "invalid-name",                  # is checked by ruff (N)
+    "missing-docstring",             # is checked by ruff (D)
+    "redefined-outer-name",          # false positives for pytest fixtures
+]

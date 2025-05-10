@@ -7,20 +7,23 @@
   import { urlForAccount } from "../helpers";
   import { leaf } from "../lib/account";
   import AccountIndicator from "../sidebar/AccountIndicator.svelte";
-
   import { getTreeTableContext } from "./helpers";
 
-  /** The account node to render the name cell for. */
-  export let node: AccountTreeNode;
+  interface Props {
+    /** The account node to render the name cell for. */
+    node: AccountTreeNode;
+  }
+
+  let { node }: Props = $props();
 
   const { toggled } = getTreeTableContext();
 
-  $: ({ account, children } = node);
+  let { account, children } = $derived(node);
 
   /**
    * Toggle the account and (depending on the mouse event) its children in the set.
    */
-  $: on_click = (event: MouseEvent) => {
+  let on_click = $derived((event: MouseEvent) => {
     toggled.update((t) => {
       const new_t = new Set(t);
       const is_toggled = new_t.has(account);
@@ -37,26 +40,26 @@
           } else {
             new_t.add(n.account);
           }
-          n.children.filter((c) => c.children.length).forEach(toggle_all);
+          n.children.filter((c) => c.children.length > 0).forEach(toggle_all);
         };
         children.forEach(toggle_all);
       }
       if (is_toggled && (event.ctrlKey || event.metaKey)) {
         // collapse all direct children to only expand one level
         children
-          .filter((c) => c.children.length)
+          .filter((c) => c.children.length > 0)
           .forEach((n) => {
             new_t.add(n.account);
           });
       }
       return new_t;
     });
-  };
+  });
 </script>
 
 <span class="droptarget" data-account-name={account}>
   {#if children.length > 0}
-    <button type="button" class="unset" on:click={on_click}>
+    <button type="button" class="unset" onclick={on_click}>
       {$toggled.has(account) ? "▸" : "▾"}
     </button>
   {/if}

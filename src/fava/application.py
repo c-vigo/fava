@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 import mimetypes
-from dataclasses import fields
 from datetime import date
 from datetime import datetime
 from datetime import timezone
@@ -30,7 +29,6 @@ from urllib.parse import urlunparse
 
 import markdown2  # type: ignore[import-untyped]
 from beancount import __version__ as beancount_version
-from beancount.utils.text_utils import replace_numbers
 from flask import abort
 from flask import current_app
 from flask import Flask
@@ -46,10 +44,12 @@ from markupsafe import Markup
 from werkzeug.utils import secure_filename
 
 from fava import __version__ as fava_version
-from fava import LANGUAGES
+from fava import LOCALES
 from fava import template_filters
 from fava._ctx_globals_class import Context
+from fava.beans import funcs
 from fava.context import g
+from fava.core import conversion
 from fava.core import FavaLedger
 from fava.core.charts import FavaJSONProvider
 from fava.core.documents import is_document_or_import_file
@@ -65,7 +65,8 @@ from fava.util import slugify
 from fava.util.excel import HAVE_EXCEL
 
 if TYPE_CHECKING:  # pragma: no cover
-    from typing import Iterable
+    from collections.abc import ItemsView
+    from collections.abc import Iterable
 
     from flask.wrappers import Response
     from werkzeug import Response as WerkzeugResponse
@@ -74,9 +75,7 @@ if TYPE_CHECKING:  # pragma: no cover
 setup_logging()
 
 SERVER_SIDE_REPORTS = [
-    "holdings",
     "journal",
-    "options",
     "statistics",
 ]
 
@@ -87,29 +86,99 @@ CLIENT_SIDE_REPORTS = [
     "editor",
     "errors",
     "events",
+    "holdings",
     "import",
     "income_statement",
+    "options",
     "query",
     "trial_balance",
 ]
 
+log = logging.getLogger(__name__)
 
-if not mimetypes.types_map.get(".js", "").endswith("/javascript"):
+
+if not mimetypes.types_map.get(".js", "").endswith(
+    "/javascript"
+):  # pragma: no cover
     # This is sometimes broken on windows, see
     # https://github.com/beancount/fava/issues/1446
-    logging.error("Invalid mimetype set for '.js', overriding")
+    log.error("Invalid mimetype set for '.js', overriding")
     mimetypes.add_type("text/javascript", ".js")
 
 
-def _ledger_slugs_dict(ledgers: Iterable[FavaLedger]) -> dict[str, FavaLedger]:
-    """Get dictionary mapping URL slugs to ledgers."""
-    ledgers_by_slug: dict[str, FavaLedger] = {}
-    for ledger in ledgers:
-        title_slug = slugify(ledger.options["title"])
-        slug = title_slug or slugify(ledger.beancount_file_path)
-        unique_key = next_key(slug, ledgers_by_slug)
-        ledgers_by_slug[unique_key] = ledger
-    return ledgers_by_slug
+def _slug(ledger: FavaLedger) -> str:
+    """Slug for a ledger."""
+    title_slug = slugify(ledger.options["title"])
+    return title_slug or slugify(ledger.beancount_file_path)
+
+
+class _LedgerSlugLoader:
+    """Load multiple ledgers and access them by their slug."""
+
+    def __init__(
+        self,
+        fava_app: Flask,
+        *,
+        load: bool = False,
+        poll_watcher: bool = False,
+    ) -> None:
+        self.fava_app = fava_app
+        self.poll_watcher = poll_watcher
+
+        self._lock = Lock()
+
+        # The loaded ledgers - lazily loaded unless load=True
+        self._ledgers = None
+        # The titles of the ledgers - used to check whether the ledgers_by_slug
+        # below needs to be re-computed
+        self._titles: list[str] | None = None
+        # Cache the dict of ledgers by their slugs
+        self._ledgers_by_slug: dict[str, FavaLedger] | None = None
+
+        if load:
+            with self._lock:
+                self._ledgers = self._load()
+
+    def _load(self) -> list[FavaLedger]:
+        return [
+            FavaLedger(path, poll_watcher=self.poll_watcher)
+            for path in self.fava_app.config["BEANCOUNT_FILES"]
+        ]
+
+    @property
+    def ledgers(self) -> list[FavaLedger]:
+        """Return the list of loaded ledgers (loading it if not yet done)."""
+        if self._ledgers is None:
+            with self._lock:
+                # avoid loading it already loaded while waiting for the lock
+                if self._ledgers is None:  # pragma: no cover
+                    self._ledgers = self._load()
+        return self._ledgers
+
+    @property
+    def ledgers_by_slug(self) -> dict[str, FavaLedger]:
+        """A dict mapping slugs to the loaded ledgers."""
+        ledgers = self.ledgers
+        titles = [ledger.options["title"] for ledger in ledgers]
+        if self._ledgers_by_slug is None or self._titles != titles:
+            by_slug: dict[str, FavaLedger] = {}
+            for ledger in ledgers:
+                by_slug[next_key(_slug(ledger), by_slug)] = ledger
+            self._ledgers_by_slug = by_slug
+            self._titles = titles
+        return self._ledgers_by_slug
+
+    def first_slug(self) -> str:
+        """Get the slug of the first ledger."""
+        return _slug(self.ledgers[0])
+
+    def items(self) -> ItemsView[str, FavaLedger]:
+        """Get an items view of all the ledgers by slug."""
+        return self.ledgers_by_slug.items()
+
+    def __getitem__(self, slug: str) -> FavaLedger:
+        """Get the ledger for the given slug."""
+        return self.ledgers_by_slug[slug]
 
 
 def static_url(filename: str) -> str:
@@ -152,7 +221,7 @@ def translations() -> dict[str, str]:
     return get_translations()._catalog  # type: ignore[no-any-return]  # noqa: SLF001
 
 
-def _setup_template_config(fava_app: Flask) -> None:
+def _setup_template_config(fava_app: Flask, *, incognito: bool) -> None:
     """Setup jinja, template filters and globals."""
     # Jinja config
     fava_app.jinja_options = {
@@ -162,9 +231,18 @@ def _setup_template_config(fava_app: Flask) -> None:
     }
 
     # Add template filters
-    for function in template_filters.FILTERS:
-        fava_app.add_template_filter(function)
-    fava_app.add_template_filter(fields, "dataclass_fields")
+    fava_app.add_template_filter(conversion.units)
+    fava_app.add_template_filter(funcs.hash_entry)
+    fava_app.add_template_filter(template_filters.basename)
+    fava_app.add_template_filter(template_filters.flag_to_type)
+    fava_app.add_template_filter(template_filters.format_currency)
+    fava_app.add_template_filter(template_filters.meta_items)
+    fava_app.add_template_filter(
+        template_filters.replace_numbers
+        if incognito
+        else template_filters.passthrough_numbers,
+        "incognito",
+    )
 
     # Add template global functions
     fava_app.add_template_global(static_url, "static_url")
@@ -183,7 +261,6 @@ def _setup_filters(
     fava_app: Flask,
     *,
     read_only: bool,
-    incognito: bool,
 ) -> None:
     """Setup request handlers/filters."""
     fava_app.url_defaults(_inject_filters)
@@ -207,48 +284,25 @@ def _setup_filters(
             if request.method != "GET":
                 abort(401)
 
-    if incognito:
-        # Replace all numbers with 'X'.
-        @fava_app.after_request
-        def _incognito(response: WerkzeugResponse) -> WerkzeugResponse:
-            if response.content_type.startswith("text/html"):
-                original_text = response.get_data(as_text=True)
-                response.set_data(replace_numbers(original_text))
-            return response
-
-    load_file_lock = Lock()
-
     @fava_app.url_value_preprocessor
     def _pull_beancount_file(
         _: str | None,
         values: dict[str, str] | None,
     ) -> None:
         g.beancount_file_slug = values.pop("bfile", None) if values else None
-        if not fava_app.config["LEDGERS"]:
-            with load_file_lock:
-                if not fava_app.config["LEDGERS"]:
-                    fava_app.config["LEDGERS"] = _ledger_slugs_dict(
-                        FavaLedger(filepath)
-                        for filepath in fava_app.config["BEANCOUNT_FILES"]
-                    )
         if g.beancount_file_slug:
-            if g.beancount_file_slug not in fava_app.config["LEDGERS"]:
-                # one of the file slugs might have changed, update the mapping
-                fava_app.config["LEDGERS"] = _ledger_slugs_dict(
-                    fava_app.config["LEDGERS"].values(),
-                )
-                if g.beancount_file_slug not in fava_app.config["LEDGERS"]:
-                    abort(404)
-            g.ledger = fava_app.config["LEDGERS"][g.beancount_file_slug]
+            try:
+                ledgers: _LedgerSlugLoader = fava_app.config["LEDGERS"]
+                g.ledger = ledgers[g.beancount_file_slug]
+            except KeyError:
+                abort(404)
 
     @fava_app.errorhandler(FavaAPIError)
-    def fava_api_exception(error: FavaAPIError) -> str:
+    def fava_api_exception(error: FavaAPIError) -> tuple[str, int]:
         """Handle API errors."""
         return render_template(
-            "_layout.html",
-            page_title="Error",
-            content=error.message,
-        )
+            "_layout.html", page_title="Error", content=error.message
+        ), 500
 
 
 def _setup_routes(fava_app: Flask) -> None:  # noqa: PLR0915
@@ -256,18 +310,17 @@ def _setup_routes(fava_app: Flask) -> None:  # noqa: PLR0915
     @fava_app.route("/<bfile>/")
     def index() -> WerkzeugResponse:
         """Redirect to the Income Statement (of the given or first file)."""
+        ledgers: _LedgerSlugLoader = fava_app.config["LEDGERS"]
         if not g.beancount_file_slug:
-            g.beancount_file_slug = next(iter(fava_app.config["LEDGERS"]))
+            g.beancount_file_slug = ledgers.first_slug()
         index_url = url_for("index")
-        default_page = fava_app.config["LEDGERS"][
-            g.beancount_file_slug
-        ].fava_options.default_page
+        default_page = ledgers[g.beancount_file_slug].fava_options.default_page
         return redirect(f"{index_url}{default_page}")
 
     @fava_app.route("/<bfile>/account/<name>/")
-    def account(name: str) -> str:
+    def account(name: str) -> str:  # noqa: ARG001
         """Get the account report."""
-        return render_template("_layout.html", content="", name=name)
+        return render_template("_layout.html", content="")
 
     @fava_app.route("/<bfile>/document/", methods=["GET"])
     def document() -> Response:
@@ -289,14 +342,9 @@ def _setup_routes(fava_app: Flask) -> None:  # noqa: PLR0915
         "/<bfile>/holdings"
         "/by_<any(account,currency,cost_currency):aggregation_key>/",
     )
-    def holdings_by(
-        aggregation_key: str,
-    ) -> str:
-        """Get the holdings report."""
-        return render_template(
-            "holdings.html",
-            aggregation_key=aggregation_key,
-        )
+    def holdings_by(**_kwargs: str) -> str:
+        """Get the client-side-rendered holdings report."""
+        return render_template("_layout.html", content="")
 
     @fava_app.route("/<bfile>/<report_name>/")
     def report(report_name: str) -> str:
@@ -341,7 +389,7 @@ def _setup_routes(fava_app: Flask) -> None:  # noqa: PLR0915
 
         g.extension = ext
         template = ext.jinja_env.get_template(f"{ext.name}.html")
-        content = Markup(template.render(ledger=g.ledger, extension=ext))
+        content = Markup(template.render(ledger=g.ledger, extension=ext))  # noqa: S704
         return render_template(
             "_layout.html",
             content=content,
@@ -352,7 +400,7 @@ def _setup_routes(fava_app: Flask) -> None:  # noqa: PLR0915
     def download_query(result_format: str) -> Response:
         """Download a query result."""
         name, data = g.ledger.query_shell.query_to_file(
-            g.filtered.entries,
+            g.filtered.entries_with_all_prices,
             request.args.get("query_string", ""),
             result_format,
         )
@@ -381,7 +429,7 @@ def _setup_routes(fava_app: Flask) -> None:  # noqa: PLR0915
         return render_template(
             "help.html",
             page_slug=page_slug,
-            help_html=Markup(
+            help_html=Markup(  # noqa: S704
                 render_template_string(
                     html,
                     beancount_version=beancount_version,
@@ -422,17 +470,9 @@ def _setup_babel(fava_app: Flask) -> None:
     def _get_locale() -> str | None:
         """Get locale."""
         lang = g.ledger.fava_options.language
-        if lang is not None:
-            return lang
-        return request.accept_languages.best_match(["en", *LANGUAGES])
+        return lang or request.accept_languages.best_match(["en", *LOCALES])
 
-    try:
-        # for Flask-Babel <3.0
-        babel = Babel(fava_app)
-        babel.localeselector(_get_locale)
-    except AttributeError:
-        # for Flask-Babel >=3.0
-        babel = Babel(fava_app, locale_selector=_get_locale)
+    Babel(fava_app, locale_selector=_get_locale)
 
 
 def create_app(
@@ -441,6 +481,7 @@ def create_app(
     load: bool = False,
     incognito: bool = False,
     read_only: bool = False,
+    poll_watcher: bool = False,
 ) -> Flask:
     """Create a Fava Flask application.
 
@@ -449,27 +490,23 @@ def create_app(
         load: Whether to load the Beancount files directly.
         incognito: Whether to run in incognito mode.
         read_only: Whether to run in read-only mode.
+        poll_watcher: Whether to use old poll watcher
     """
     fava_app = Flask("fava")
     fava_app.register_blueprint(json_api, url_prefix="/<bfile>/api")
     fava_app.json = FavaJSONProvider(fava_app)
     fava_app.app_ctx_globals_class = Context  # type: ignore[assignment]
-    _setup_template_config(fava_app)
+    _setup_template_config(fava_app, incognito=incognito)
     _setup_babel(fava_app)
-    _setup_filters(fava_app, read_only=read_only, incognito=incognito)
+    _setup_filters(fava_app, read_only=read_only)
     _setup_routes(fava_app)
 
     fava_app.config["HAVE_EXCEL"] = HAVE_EXCEL
     fava_app.config["BEANCOUNT_FILES"] = [str(f) for f in files]
     fava_app.config["INCOGNITO"] = incognito
-
-    if load:
-        fava_app.config["LEDGERS"] = _ledger_slugs_dict(
-            FavaLedger(filepath)
-            for filepath in fava_app.config["BEANCOUNT_FILES"]
-        )
-    else:
-        fava_app.config["LEDGERS"] = None
+    fava_app.config["LEDGERS"] = _LedgerSlugLoader(
+        fava_app, load=load, poll_watcher=poll_watcher
+    )
 
     return fava_app
 

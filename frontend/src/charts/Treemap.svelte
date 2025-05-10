@@ -1,12 +1,11 @@
 <script lang="ts">
-  import { treemap } from "d3-hierarchy";
   import type { HierarchyRectangularNode } from "d3-hierarchy";
+  import { treemap } from "d3-hierarchy";
   import type { Action } from "svelte/action";
 
   import { formatPercentage } from "../format";
   import { urlForAccount } from "../helpers";
   import { ctx } from "../stores/format";
-
   import { treemapScale } from "./helpers";
   import type {
     AccountHierarchyDatum,
@@ -14,15 +13,21 @@
   } from "./hierarchy";
   import { domHelpers, followingTooltip } from "./tooltip";
 
-  export let data: AccountHierarchyNode;
-  export let width: number;
-  export let currency: string;
+  interface Props {
+    data: AccountHierarchyNode;
+    width: number;
+    currency: string;
+  }
 
-  $: height = Math.min(width / 2.5, 400);
+  let { data, width, currency }: Props = $props();
+
+  let height = $derived(Math.min(width / 2.5, 400));
 
   const tree = treemap<AccountHierarchyDatum>().paddingInner(2).round(true);
-  $: root = tree.size([width, height])(data);
-  $: leaves = root.leaves().filter((d) => d.value);
+  let root = $derived(tree.size([width, height])(data));
+  let leaves = $derived(
+    root.leaves().filter((d) => d.value != null && d.value !== 0),
+  );
 
   function fill(d: AccountHierarchyNode) {
     const node = d.data.dummy && d.parent ? d.parent : d;
@@ -84,9 +89,5 @@
 <style>
   svg {
     shape-rendering: crispedges;
-  }
-
-  text {
-    cursor: pointer;
   }
 </style>

@@ -4,7 +4,6 @@
 -->
 <script lang="ts">
   import { _ } from "../i18n";
-
   import { getTreeTableContext } from "./helpers";
 
   const { toggled } = getTreeTableContext();
@@ -21,7 +20,7 @@
       type="button"
       class="link"
       title={_("Expand all accounts")}
-      on:click={() => {
+      onclick={() => {
         toggled.set(new Set());
       }}
     >

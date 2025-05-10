@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 import datetime
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
-from fava.beans.abc import Amount
+from fava.beans import BEANCOUNT_V3
 from fava.beans.abc import Note
 from fava.beans.abc import Transaction
 from fava.beans.ingest import BeanImporterProtocol
-from fava.core.ingest import file_import_info
-from fava.core.ingest import FileImporters
 from fava.core.ingest import FileImportInfo
 from fava.core.ingest import filepath_in_primary_imports_folder
+from fava.core.ingest import ImportConfigLoadError
+from fava.core.ingest import ImporterExtractError
+from fava.core.ingest import ImporterInvalidTypeError
+from fava.core.ingest import load_import_config
+from fava.core.ingest import WrappedImporter
 from fava.helpers import FavaAPIError
 from fava.serialisation import serialise
 from fava.util.date import local_today
@@ -27,55 +31,109 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 def test_ingest_file_import_info(
-    test_data_dir: Path,
-    get_ledger: GetFavaLedger,
+    test_data_dir: Path, get_ledger: GetFavaLedger
 ) -> None:
-    class Imp(BeanImporterProtocol):
-        def __init__(self, acc: str) -> None:
-            self.acc = acc
-
-        def name(self) -> str:
-            return self.acc
-
-        def identify(self, file: FileMemo) -> bool:
-            return self.acc in file.name
-
-        def file_account(self, _file: FileMemo) -> str:
-            return self.acc
-
-    class Invalid(BeanImporterProtocol):
-        def __init__(self, acc: str) -> None:
-            self.acc = acc
-
-        def name(self) -> str:
-            return self.acc
-
-        def identify(self, file: FileMemo) -> bool:
-            return self.acc in file.name
-
-        def file_account(self, _file: FileMemo) -> str:
-            msg = "Some error reason..."
-            raise ValueError(msg)
-
     ingest_ledger = get_ledger("import")
     importer = next(iter(ingest_ledger.ingest.importers.values()))
     assert importer
 
-    info = file_import_info(str(test_data_dir / "import.csv"), importer)
+    csv_path = test_data_dir / "import.csv"
+    info = importer.file_import_info(csv_path)
     assert info.account == "Assets:Checking"
 
-    info2 = file_import_info("/asdf/basename", Imp("rawfile"))
-    assert isinstance(info2.account, str)
-    assert info2 == FileImportInfo(
-        "rawfile",
-        "rawfile",
+
+class MinimalImporter(BeanImporterProtocol):
+    def __init__(self, acc: str = "Assets:Checking") -> None:
+        self.acc = acc
+
+    def name(self) -> str:
+        return f"MinimalImporter({self.acc})"
+
+    def identify(self, file: FileMemo) -> bool:
+        return self.acc in file.name
+
+    def file_account(self, _file: FileMemo) -> str:
+        return self.acc
+
+
+def test_ingest_file_import_info_minimal_importer(test_data_dir: Path) -> None:
+    csv_path = test_data_dir / "import.csv"
+
+    importer = WrappedImporter(MinimalImporter())
+    info = importer.file_import_info(csv_path)
+    assert info == FileImportInfo(
+        "MinimalImporter(Assets:Checking)",
+        "Assets:Checking",
         local_today(),
-        "basename",
+        "import.csv",
     )
 
+
+class AccountNameErrors(MinimalImporter):
+    def file_account(self, _file: FileMemo) -> str:
+        msg = "Some error reason..."
+        raise ValueError(msg)
+
+
+def test_ingest_file_import_info_account_method_errors(
+    test_data_dir: Path,
+) -> None:
+    csv_path = test_data_dir / "import.csv"
+
+    importer = WrappedImporter(AccountNameErrors())
     with pytest.raises(FavaAPIError) as err:
-        file_import_info("/asdf/basename", Invalid("rawfile"))
+        importer.file_import_info(csv_path)
     assert "Some error reason..." in err.value.message
+
+
+class IdentifyErrors(MinimalImporter):
+    def identify(self, _file: FileMemo) -> bool:
+        msg = "IDENTIFY_ERRORS"
+        raise ValueError(msg)
+
+
+def test_ingest_identify_errors(test_data_dir: Path) -> None:
+    csv_path = test_data_dir / "import.csv"
+
+    importer = WrappedImporter(IdentifyErrors())
+    with pytest.raises(FavaAPIError) as err:
+        importer.identify(csv_path)
+    assert "IDENTIFY_ERRORS" in err.value.message
+
+
+class ImporterNameErrors(MinimalImporter):
+    def name(self) -> str:
+        msg = "GET_NAME_WILL_ERROR"
+        raise ValueError(msg)
+
+
+def test_ingest_get_name_errors() -> None:
+    importer = WrappedImporter(ImporterNameErrors())
+    with pytest.raises(FavaAPIError) as err:
+        assert importer.name
+    assert "GET_NAME_WILL_ERROR" in err.value.message
+
+
+class ImporterNameInvalidType(MinimalImporter):
+    def name(self) -> str:
+        return False  # type: ignore[return-value]
+
+
+def test_ingest_get_name_invalid_type() -> None:
+    importer = WrappedImporter(ImporterNameInvalidType())
+    with pytest.raises(ImporterInvalidTypeError):
+        assert importer.name
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="different error on windows"
+)
+def test_load_import_config() -> None:
+    with pytest.raises(ImportConfigLoadError, match=r".*ImportError.*"):
+        load_import_config(Path(__file__).parent)
+
+    with pytest.raises(ImportConfigLoadError, match=r".*CONFIG is missing.*"):
+        load_import_config(Path(__file__))
 
 
 def test_ingest_no_config(small_example_ledger: FavaLedger) -> None:
@@ -92,22 +150,18 @@ def test_ingest_examplefile(
     ingest_ledger = get_ledger("import")
 
     files = ingest_ledger.ingest.import_data()
-    files_with_importers = [f for f in files if f.importers]
     assert len(files) > 10  # all files in the test datafolder
-    assert files_with_importers == [
-        FileImporters(
-            name=str(test_data_dir / "import.csv"),
-            basename="import.csv",
-            importers=[
-                FileImportInfo(
-                    "<run_path>.TestImporter",
-                    "Assets:Checking",
-                    local_today(),
-                    "examplebank.import.csv",
-                ),
-            ],
-        ),
-    ]
+
+    with pytest.raises(ImporterExtractError):
+        entries = ingest_ledger.ingest.extract(
+            str(test_data_dir / "import.csv"),
+            "<run_path>.TestImporterThatErrorsOnExtrac",
+        )
+    entries = ingest_ledger.ingest.extract(
+        str(test_data_dir / "import.csv"),
+        "<run_path>.TestBeangulpImporterNoExtraction",
+    )
+    assert not entries
 
     entries = ingest_ledger.ingest.extract(
         str(test_data_dir / "import.csv"),
@@ -125,15 +179,38 @@ def test_ingest_examplefile(
         == "Payment to Company XYZ REF: 31000161205-6944556-0000463"
     )
     assert not entries[1].postings[0].account
-    assert isinstance(entries[1].postings[0].units, Amount)
+    assert entries[1].postings[0].units is not None
     assert entries[1].postings[0].units.number == 50.00
     assert entries[1].postings[0].units.currency == "EUR"
     assert entries[1].postings[1].account == "Assets:Checking"
-    assert isinstance(entries[1].postings[1].units, Amount)
+    assert entries[1].postings[1].units is not None
     assert entries[1].postings[1].units.number == -50.00
     assert entries[1].postings[1].units.currency == "EUR"
-    assert "__duplicate__" not in entries[1].meta
-    assert "__duplicate__" in entries[2].meta
+    if not BEANCOUNT_V3:
+        assert "__duplicate__" not in entries[1].meta
+        assert "__duplicate__" in entries[2].meta
+
+    ingest_ledger.ingest.extract(
+        str(test_data_dir / "import.csv"),
+        "<run_path>.TestBeangulpImporter",
+    )
+    snapshot([serialise(e) for e in entries], json=True)
+
+
+def test_ingest_errors_file_does_not_exist(
+    get_ledger: GetFavaLedger,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ingest_ledger = get_ledger("import")
+    ingest_ledger.ingest.load_file()
+    assert not ingest_ledger.ingest.errors
+    monkeypatch.setattr(
+        ingest_ledger.fava_options,
+        "import_config",
+        "does_not_exist.py",
+    )
+    ingest_ledger.ingest.load_file()
+    assert ingest_ledger.ingest.errors
 
 
 def test_filepath_in_primary_imports_folder(

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import datetime
+import sys
+from difflib import Differ
+from http import HTTPStatus
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -26,6 +29,16 @@ if TYPE_CHECKING:  # pragma: no cover
     from .conftest import SnapshotFunc
 
 
+def diff_strings(a: str, b: str) -> list[str]:
+    """Diff two strings and return the list of differing lines."""
+    differ = Differ()
+    return [
+        line
+        for line in differ.compare(a.splitlines(), b.splitlines())
+        if line.startswith(("+", "-"))
+    ]
+
+
 def test_validate_get_args() -> None:
     def noparams() -> None:
         pass
@@ -43,11 +56,14 @@ def test_validate_get_args() -> None:
     assert validator({"test": "value"}) == ["value"]
 
 
-def assert_api_error(response: TestResponse, msg: str | None = None) -> str:
+def assert_api_error(
+    response: TestResponse,
+    msg: str | None = None,
+    status: HTTPStatus = HTTPStatus.INTERNAL_SERVER_ERROR,
+) -> str:
     """Asserts that the response errored and contains the message."""
-    assert response.status_code == 200
+    assert response.status_code == status.value
     assert response.json
-    assert not response.json["success"], response.json
     err_msg = response.json["error"]
     assert isinstance(err_msg, str)
     if msg:
@@ -57,9 +73,8 @@ def assert_api_error(response: TestResponse, msg: str | None = None) -> str:
 
 def assert_api_success(response: TestResponse, data: Any | None = None) -> Any:
     """Asserts that the request was successful and contains the data."""
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK.value
     assert response.json
-    assert response.json["success"], response.json
     if data is not None:
         assert data == response.json["data"]
     return response.json["data"]
@@ -70,37 +85,124 @@ def test_api_changed(test_client: FlaskClient) -> None:
     assert_api_success(response, data=False)
 
 
-def test_api_add_document(
+def test_api_add_document_and_move_and_delete(
     app: Flask,
     test_client: FlaskClient,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    add_url = "/long-example/api/add_document"
+    get_url = "/long-example/document/"
+    move_url = "/long-example/api/move"
+    delete_url = "/long-example/api/document"
+    account = "Expenses:Food:Restaurant"
+    account_dir = tmp_path / "Expenses" / "Food" / "Restaurant"
+
+    def _data(
+        filename: str,
+    ) -> dict[str, str | tuple[BytesIO, str]]:
+        return {
+            "folder": str(tmp_path),
+            "account": account,
+            "file": (BytesIO(b"asdfasdf"), filename),
+        }
+
     with app.test_request_context("/long-example/"):
         app.preprocess_request()
 
-        monkeypatch.setitem(g.ledger.options, "documents", [str(tmp_path)])
-        request_data = {
-            "folder": str(tmp_path),
-            "account": "Expenses:Food:Restaurant",
-            "file": (BytesIO(b"asdfasdf"), "2015-12-12 test"),
-        }
-        url = "/long-example/api/add_document"
+        # error when no documents dir is set
+        monkeypatch.setitem(g.ledger.options, "documents", [])
 
-        response = test_client.put(url)
-        assert_api_error(response, "No file uploaded.")
-
-        filename = (
-            tmp_path / "Expenses" / "Food" / "Restaurant" / "2015-12-12 test"
+        response = test_client.put(add_url)
+        assert_api_error(
+            response,
+            "You need to set a documents folder.",
+            HTTPStatus.UNPROCESSABLE_ENTITY,
         )
 
-        response = test_client.put(url, data=request_data)
-        assert_api_success(response, f"Uploaded to {filename}")
-        assert Path(filename).is_file()
+        # upload to temporary directory
+        monkeypatch.setitem(g.ledger.options, "documents", [str(tmp_path)])
+        monkeypatch.setattr(
+            g.ledger.fava_options, "import_dirs", [str(account_dir)]
+        )
 
-        request_data["file"] = (BytesIO(b"asdfasdf"), "2015-12-12 test")
-        response = test_client.put(url, data=request_data)
-        assert_api_error(response, f"{filename} already exists.")
+        response = test_client.put(add_url)
+        assert_api_error(response, "No file uploaded.", HTTPStatus.BAD_REQUEST)
+
+        response = test_client.put(add_url, data=_data(""))
+        assert_api_error(
+            response,
+            "Uploaded file is missing filename.",
+            HTTPStatus.BAD_REQUEST,
+        )
+
+        filename = account_dir / "2015-12-12 test"
+        assert not filename.exists()
+        response = test_client.put(add_url, data=_data("2015-12-12 test"))
+        assert_api_success(response, f"Uploaded to {filename}")
+        assert filename.read_text() == "asdfasdf"
+        assert filename.is_file()
+
+        response = test_client.get(
+            get_url, query_string={"filename": str(filename)}
+        )
+        assert response.status_code == HTTPStatus.OK.value
+        assert response.get_data() == b"asdfasdf"
+
+        response = test_client.put(add_url, data=_data("2015-12-12 test"))
+        assert_api_error(
+            response, f"{filename} already exists.", HTTPStatus.CONFLICT
+        )
+
+        # move to same path should fail
+        response = test_client.get(
+            move_url,
+            query_string={
+                "account": account,
+                "filename": str(filename),
+                "new_name": "2015-12-12 test",
+            },
+        )
+        assert_api_error(
+            response, f"{filename} already exists.", HTTPStatus.CONFLICT
+        )
+
+        response = test_client.get(
+            move_url,
+            query_string={
+                "account": account,
+                "filename": str(filename),
+                "new_name": "2015-12-12 test_moved",
+            },
+        )
+        new_filename = account_dir / "2015-12-12 test_moved"
+        assert_api_success(response, f"Moved {filename} to {new_filename}.")
+        assert not filename.exists()
+        assert new_filename.exists()
+
+        # delete
+        invalid_filename = tmp_path / "asdf"
+        response = test_client.delete(
+            delete_url,
+            query_string={"filename": str(invalid_filename)},
+        )
+        assert_api_error(
+            response,
+            f"Not valid document or import file: '{invalid_filename}'.",
+            HTTPStatus.BAD_REQUEST,
+        )
+
+        response = test_client.delete(
+            delete_url,
+            query_string={"filename": str(filename)},
+        )
+        assert_api_error(response, f"{filename} does not exist.")
+
+        response = test_client.delete(
+            delete_url,
+            query_string={"filename": str(new_filename)},
+        )
+        assert_api_success(response, f"Deleted {new_filename}.")
 
 
 def test_api_upload_import_file(
@@ -109,32 +211,42 @@ def test_api_upload_import_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    url = "/long-example/api/upload_import_file"
+
     with app.test_request_context("/long-example/"):
         app.preprocess_request()
 
         monkeypatch.setattr(
-            g.ledger.fava_options,
-            "import_dirs",
-            [str(tmp_path)],
+            g.ledger.fava_options, "import_dirs", [str(tmp_path)]
         )
-        request_data = {
-            "file": (BytesIO(b"asdfasdf"), "recipt.pdf"),
-        }
-        url = "/long-example/api/upload_import_file"
 
         response = test_client.put(url)
-        assert_api_error(response, "No file uploaded.")
+        assert_api_error(response, "No file uploaded.", HTTPStatus.BAD_REQUEST)
 
-        filename = tmp_path / "recipt.pdf"
+        response = test_client.put(
+            url, data={"file": (BytesIO(b"asdfasdf"), "")}
+        )
+        assert_api_error(
+            response,
+            "Uploaded file is missing filename.",
+            HTTPStatus.BAD_REQUEST,
+        )
 
-        response = test_client.put(url, data=request_data)
+        filename = tmp_path / "receipt.pdf"
+        assert not filename.is_file()
+        response = test_client.put(
+            url, data={"file": (BytesIO(b"asdfasdf"), "receipt.pdf")}
+        )
         assert_api_success(response, f"Uploaded to {filename}")
-        assert Path(filename).is_file()
+        assert filename.is_file()
 
         # Uploading the exact same file should fail due to path conflict
-        request_data["file"] = (BytesIO(b"asdfasdf"), "recipt.pdf")
-        response = test_client.put(url, data=request_data)
-        assert_api_error(response, f"{filename} already exists.")
+        response = test_client.put(
+            url, data={"file": (BytesIO(b"asdfasdf"), "receipt.pdf")}
+        )
+        assert_api_error(
+            response, f"{filename} already exists.", HTTPStatus.CONFLICT
+        )
 
 
 def test_api_errors(test_client: FlaskClient, snapshot: SnapshotFunc) -> None:
@@ -158,7 +270,19 @@ def test_api_context(
     assert_api_error(
         response,
         "Invalid API request: Parameter `entry_hash` is missing.",
+        HTTPStatus.BAD_REQUEST,
     )
+
+    balance_entry_hash = hash_entry(
+        example_ledger.all_entries_by_type.Balance[0]
+    )
+    response = test_client.get(
+        "/long-example/api/context",
+        query_string={"entry_hash": balance_entry_hash},
+    )
+    data = assert_api_success(response)
+    assert data["balances_before"]
+    assert not data["balances_after"]
 
     entry_hash = hash_entry(
         next(
@@ -189,7 +313,8 @@ def test_api_payee_accounts(
     test_client: FlaskClient,
     snapshot: SnapshotFunc,
 ) -> None:
-    assert_api_error(test_client.get("/long-example/api/payee_accounts"))
+    response = test_client.get("/long-example/api/payee_accounts")
+    assert_api_error(response, status=HTTPStatus.BAD_REQUEST)
 
     response = test_client.get(
         "/long-example/api/payee_accounts",
@@ -241,11 +366,16 @@ def test_api_move(test_client: FlaskClient) -> None:
     assert_api_error(
         response,
         "Invalid API request: Parameter `account` is missing.",
+        HTTPStatus.BAD_REQUEST,
     )
 
     invalid = {"account": "Assets", "new_name": "new", "filename": "old"}
     response = test_client.get("/long-example/api/move", query_string=invalid)
-    assert_api_error(response, "You need to set a documents folder.")
+    assert_api_error(
+        response,
+        "You need to set a documents folder.",
+        HTTPStatus.UNPROCESSABLE_ENTITY,
+    )
 
     response = test_client.get("/import/api/move", query_string=invalid)
     assert_api_error(response, "Not a valid account: 'Assets'")
@@ -257,7 +387,9 @@ def test_api_move(test_client: FlaskClient) -> None:
             "account": "Assets:Checking",
         },
     )
-    assert_api_error(response, "Not a file: 'old'")
+    assert_api_error(
+        response, "Not a file: 'old'", HTTPStatus.UNPROCESSABLE_ENTITY
+    )
 
 
 def test_api_get_source_invalid_unicode(test_client: FlaskClient) -> None:
@@ -278,27 +410,33 @@ def test_api_get_source_unknown_file(test_client: FlaskClient) -> None:
     assert "Trying to read a non-source file" in err_msg
 
 
-def test_api_source_put(app_in_tmp_dir: Flask) -> None:
+def test_api_put_source_bad_request(test_client: FlaskClient) -> None:
+    response = test_client.put("/example/api/source")
+    assert_api_error(response, "Invalid JSON request.")
+
+
+def test_api_source(app_in_tmp_dir: Flask) -> None:
     test_client = app_in_tmp_dir.test_client()
     ledger = app_in_tmp_dir.config["LEDGERS"]["edit-example"]
     path = Path(ledger.beancount_file_path)
-
     url = "/edit-example/api/source"
-    # test bad request
-    response = test_client.put(url)
-    assert_api_error(response, "Invalid JSON request.")
 
     source = path.read_text("utf-8")
     changed_source = source + "\n;comment"
     sha256sum = _sha256_str(source)
 
+    # read
+    response = test_client.get(url, query_string={"filename": ""})
+    data = assert_api_success(response)
+    assert data["source"] == source
+
     # change source
     response = test_client.put(
         url,
         json={
-            "source": changed_source,
-            "sha256sum": sha256sum,
             "file_path": str(path),
+            "sha256sum": sha256sum,
+            "source": changed_source,
         },
     )
     sha256sum = _sha256_str(changed_source)
@@ -308,16 +446,98 @@ def test_api_source_put(app_in_tmp_dir: Flask) -> None:
     assert path.read_text("utf-8") == changed_source
 
     # write original source file
-    result = test_client.put(
+    response = test_client.put(
         url,
         json={
-            "source": source,
-            "sha256sum": sha256sum,
             "file_path": str(path),
+            "sha256sum": sha256sum,
+            "source": source,
         },
     )
-    assert result.status_code == 200
+    assert_api_success(response)
     assert path.read_text("utf-8") == source
+
+
+def test_api_source_slice_and_insert_metadata(app_in_tmp_dir: Flask) -> None:
+    test_client = app_in_tmp_dir.test_client()
+    ledger = app_in_tmp_dir.config["LEDGERS"]["edit-example"]
+    path = Path(ledger.beancount_file_path)
+
+    source = path.read_text("utf-8")
+
+    # get entry context and update an entry slice
+    first_txn = next(e for e in ledger.all_entries if hasattr(e, "postings"))
+    assert first_txn.payee == "Kin Soy"
+    entry_hash = hash_entry(first_txn)
+    response = test_client.get(
+        "/edit-example/api/context",
+        query_string={"entry_hash": entry_hash},
+    )
+    data = assert_api_success(response)
+    assert "Kin Soy" in data["slice"]
+
+    response = test_client.put(
+        "/edit-example/api/source_slice",
+        json={
+            "entry_hash": entry_hash,
+            "sha256sum": data["sha256sum"],
+            "source": data["slice"].replace("Kin Soy", "Lorem Ipsum"),
+        },
+    )
+    assert_api_success(response)
+    assert diff_strings(source, path.read_text("utf-8")) == [
+        '- 2014-01-04 * "Kin Soy" "Eating out with Sue"',
+        '+ 2014-01-04 * "Lorem Ipsum" "Eating out with Sue"',
+    ]
+    ledger.load_file()
+    first_txn = next(e for e in ledger.all_entries if hasattr(e, "postings"))
+    assert first_txn.payee == "Lorem Ipsum"
+    entry_hash = hash_entry(first_txn)
+
+    response = test_client.put(
+        "/edit-example/api/attach_document",
+        json={
+            "entry_hash": entry_hash,
+            "filename": "edit-example.beancount",
+        },
+    )
+    assert_api_success(response)
+    assert diff_strings(source, path.read_text("utf-8")) == [
+        '- 2014-01-04 * "Kin Soy" "Eating out with Sue"',
+        '+ 2014-01-04 * "Lorem Ipsum" "Eating out with Sue"',
+        '+   document: "edit-example.beancount"',
+    ]
+
+    ledger.load_file()
+    first_txn = next(e for e in ledger.all_entries if hasattr(e, "postings"))
+    assert first_txn.payee == "Lorem Ipsum"
+    entry_hash = hash_entry(first_txn)
+
+    ledger.options["documents"] = [str(path.parent)]
+    target_path = (
+        path.parent
+        / "Expenses"
+        / "Food"
+        / "Restaurant"
+        / "2022-12-12 asdf.txt"
+    )
+    response = test_client.put(
+        "/edit-example/api/add_document",
+        data={
+            "folder": str(path.parent),
+            "account": "Expenses:Food:Restaurant",
+            "file": (BytesIO(b"asdfasdf"), "2022-12-12 asdf.txt"),
+            "hash": entry_hash,
+        },
+    )
+    assert_api_success(response)
+    assert target_path.exists()
+    assert diff_strings(source, path.read_text("utf-8")) == [
+        '- 2014-01-04 * "Kin Soy" "Eating out with Sue"',
+        '+ 2014-01-04 * "Lorem Ipsum" "Eating out with Sue"',
+        '+   document-2: "2022-12-12 asdf.txt"',
+        '+   document: "edit-example.beancount"',
+    ]
 
 
 def test_api_format_source(
@@ -366,6 +586,7 @@ def test_api_source_slice_delete(app_in_tmp_dir: Flask) -> None:
     assert_api_error(
         response,
         "Invalid API request: Parameter `entry_hash` is missing.",
+        HTTPStatus.BAD_REQUEST,
     )
 
     entry = ledger.all_entries[-1]
@@ -393,7 +614,7 @@ def test_api_add_entries(
     with app.test_request_context("/long-example/"):
         app.preprocess_request()
         test_file = tmp_path / "test_file"
-        test_file.open("a")
+        test_file.touch()
         monkeypatch.setattr(g.ledger, "beancount_file_path", str(test_file))
 
         entries = [
@@ -443,6 +664,14 @@ def test_api_add_entries(
 
         url = "/long-example/api/add_entries"
 
+        err = test_client.put(url, json={"entries": "string"})
+        assert_api_error(
+            err,
+            "Invalid API request: Parameter `entries`"
+            " of incorrect type - expected <class 'list'>.",
+            HTTPStatus.BAD_REQUEST,
+        )
+
         response = test_client.put(url, json={"entries": entries})
         assert_api_success(response, "Stored 3 entries.")
 
@@ -465,59 +694,54 @@ def test_api_add_entries(
 
 
 @pytest.mark.parametrize(
-    ("query_string", "result_str"),
+    ("query_string", "name"),
     [
-        ("balances from year = 2014", "5086.65 USD"),
-        ("select sum(day)", "43558"),
+        ("balances from year = 2014", "balances"),
+        ("select sum(day)", "sum"),
+        ("journal from year = 2014 and month = 1", "journal"),
+        (
+            "select day, position, units(position), balance, payee, tags"
+            " from year = 2014 and month = 1",
+            "misc",
+        ),
+        (".help", "help"),
     ],
 )
 def test_api_query_result(
     query_string: str,
-    result_str: str,
+    name: str,
     test_client: FlaskClient,
+    snapshot: SnapshotFunc,
 ) -> None:
     response = test_client.get(
-        "/long-example/api/query_result",
+        "/long-example/api/query",
         query_string={"query_string": query_string},
     )
     data = assert_api_success(response)
-    assert result_str in data["table"]
+    snapshot(data, name=name, json=True)
+
+
+def test_api_query_result_types(
+    test_client: FlaskClient,
+) -> None:
+    query_string = (
+        "select day, position, units(position), balance, payee, tags, "
+        "entry, meta from year = 2014 and month = 1"
+    )
+    response = test_client.get(
+        "/long-example/api/query",
+        query_string={"query_string": query_string},
+    )
+    assert_api_success(response)
 
 
 def test_api_query_result_error(test_client: FlaskClient) -> None:
     response = test_client.get(
-        "/long-example/api/query_result",
+        "/long-example/api/query",
         query_string={"query_string": "nononono"},
     )
-    assert response.status_code == 200
-    assert "ERROR: Syntax error near" in response.get_data(as_text=True)
-
-
-def test_api_query_result_filters(test_client: FlaskClient) -> None:
-    response = test_client.get(
-        "/long-example/api/query_result",
-        query_string={"query_string": "select sum(day)", "time": "2021"},
-    )
-    data = assert_api_success(response)
-    assert data["chart"] is None
-    assert "6882" in data["table"]
-
-
-def test_api_query_result_charts(
-    test_client: FlaskClient,
-    snapshot: SnapshotFunc,
-) -> None:
-    query_string = (
-        "SELECT payee, SUM(COST(position)) AS balance "
-        "WHERE account ~ 'Assets' GROUP BY payee, account"
-    )
-    response = test_client.get(
-        "/long-example/api/query_result",
-        query_string={"query_string": query_string},
-    )
-    data = assert_api_success(response)
-    assert data["chart"]
-    snapshot(data["chart"], json=True)
+    msg = assert_api_error(response)
+    assert "Query parse error: syntax error" in msg
 
 
 def test_api_commodities_empty(
@@ -530,11 +754,39 @@ def test_api_commodities_empty(
     assert not data
 
 
+def test_api_filter_error(
+    test_client: FlaskClient,
+) -> None:
+    response = test_client.get(
+        "/long-example/api/commodities?time=20",
+    )
+    assert_api_error(response, status=HTTPStatus.BAD_REQUEST)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="does not run on windows")
+@pytest.mark.parametrize(
+    ("name", "url"),
+    [
+        ("documents", "/example/api/documents"),
+        ("options", "/long-example/api/options"),
+    ],
+)
+def test_api_unix_only(
+    test_client: FlaskClient,
+    snapshot: SnapshotFunc,
+    name: str,
+    url: str,
+) -> None:
+    response = test_client.get(url)
+    data = assert_api_success(response)
+    assert data
+    snapshot(data, name=name, json=True)
+
+
 @pytest.mark.parametrize(
     ("name", "url"),
     [
         ("commodities", "/long-example/api/commodities"),
-        ("documents", "/example/api/documents"),
         ("events", "/long-example/api/events"),
         ("income_statement", "/long-example/api/income_statement?time=2014"),
         ("trial_balance", "/long-example/api/trial_balance?time=2014"),

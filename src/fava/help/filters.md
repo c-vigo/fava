@@ -4,7 +4,7 @@ With the text inputs at the top right of the page, you can filter the entries
 that are displayed in Fava's reports. If you use multiple filters, the entries
 matching all of them will be selected.
 
-### Time
+## Time
 
 Filter entries by their date. You can specify dates and intervals like years,
 quarters, months, weeks, and days (for example `2015`, `2012-Q1`, `2010-10`,
@@ -20,18 +20,41 @@ current year up to today, or `year-1 - year` for all entries of the last and
 current year. To prevent subtraction, use parentheses: `(month)-10` refers to
 the 10th of this month, whereas `month-10` would be 10 months ago.
 
-### Account
+### ISO 8601 Week dates
+
+The week-based calendar follows
+[ISO 8601 week-numbering system](https://en.wikipedia.org/wiki/ISO_week_date)
+with each week starting on Mondays and the first week of the ISO week-based year
+being the first week that has the majority of its days in January. Equivalently,
+it is also the week to containing January 4th.
+
+Some examples where the ISO week-based calendar differs from the Gregorian
+calendar:
+
+- Week 1 of 2025 starts on Monday 30 December 2024 and ends on Sunday 5 January
+  2025\. As a result, 30 December 2024 belongs to the year 2025 of the ISO
+  week-based calendar, despite being in the year 2024 of the Gregorian calendar.
+- Week 53 of 2020 ends on Sunday 3 January 2021. As a result, 3 January 2021
+  belongs to the year 2020 of the ISO week-based calendar, despite being in the
+  year 2021 of the Gregorian calendar.
+
+Most years of ISO week-based calendars have 52 weeks, but as there are slightly
+more than 52 weeks in a year, some years contain a 53rd week.
+
+## Account
 
 Filter entries by account, matching any entry this account is part of. The
 filter can be an account name, either the full account name or a component of
 the account name, or a regular expression matching the account name, e.g.
 `.*Company.*` to filter for all that contain `Company`.
 
-### Filter by tag, link, payee and other metadata
+## Filter by tag, link, payee and other metadata
 
 This final filter allows you to filter entries by various attributes.
 
 - Filter by `#tag` or `^link`.
+- Filter by amount, such as `= 100.20` or `>= 100` (comparing the absolute of
+  the units).
 - Filter by any entry attribute, such as payee `payee:"restaurant"` or narration
   `narration:'Dinner with Joe'`. The argument is a regular expression which
   needs to be quoted (with `'` or `"`) if it contains spaces or special
@@ -48,7 +71,9 @@ This final filter allows you to filter entries by various attributes.
   `any(id:'12', account:"Cash$")` for all entries that have at least one posting
   with metadata `id: 12` or account ending in `Cash`, or
   `all(-account:"^Expenses:Food")` to exclude all transactions having a posting
-  to the Expenses:Food account.
+  to the Expenses:Food account. To match by amount, you can use comparison
+  operators, e.g. `any(units > 80)` to filter for all entries where one posting
+  has a units with an absolute amount greater than 80.
 
 These filters can be combined by separating them by spaces to match all entries
 satisfying all given filters or by commas to match all entries satisfying at

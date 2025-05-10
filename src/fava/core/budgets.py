@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections import Counter
 from collections import defaultdict
 from decimal import Decimal
-from typing import Dict
-from typing import List
 from typing import NamedTuple
 from typing import TYPE_CHECKING
 
@@ -18,6 +16,8 @@ from fava.util.date import number_of_days_in_period
 
 if TYPE_CHECKING:  # pragma: no cover
     import datetime
+    from collections.abc import Mapping
+    from collections.abc import Sequence
 
     from fava.beans.abc import Custom
     from fava.core import FavaLedger
@@ -33,7 +33,7 @@ class Budget(NamedTuple):
     currency: str
 
 
-BudgetDict = Dict[str, List[Budget]]
+BudgetDict = dict[str, list[Budget]]
 """A map of account names to lists of budget entries."""
 
 
@@ -46,23 +46,23 @@ class BudgetModule(FavaModule):
 
     def __init__(self, ledger: FavaLedger) -> None:
         super().__init__(ledger)
-        self.budget_entries: BudgetDict = {}
+        self._budget_entries: BudgetDict = {}
+        self.errors: Sequence[BudgetError] = []
 
     def load_file(self) -> None:  # noqa: D102
-        self.budget_entries, errors = parse_budgets(
+        self._budget_entries, self.errors = parse_budgets(
             self.ledger.all_entries_by_type.Custom,
         )
-        self.ledger.errors.extend(errors)
 
     def calculate(
         self,
         account: str,
         begin_date: datetime.date,
         end_date: datetime.date,
-    ) -> dict[str, Decimal]:
+    ) -> Mapping[str, Decimal]:
         """Calculate the budget for an account in an interval."""
         return calculate_budget(
-            self.budget_entries,
+            self._budget_entries,
             account,
             begin_date,
             end_date,
@@ -73,22 +73,19 @@ class BudgetModule(FavaModule):
         account: str,
         begin_date: datetime.date,
         end_date: datetime.date,
-    ) -> dict[str, Decimal]:
+    ) -> Mapping[str, Decimal]:
         """Calculate the budget for an account including its children."""
         return calculate_budget_children(
-            self.budget_entries,
+            self._budget_entries,
             account,
             begin_date,
             end_date,
         )
 
-    def __bool__(self) -> bool:
-        return bool(self.budget_entries)
-
 
 def parse_budgets(
-    custom_entries: list[Custom],
-) -> tuple[BudgetDict, list[BudgetError]]:
+    custom_entries: Sequence[Custom],
+) -> tuple[BudgetDict, Sequence[BudgetError]]:
     """Parse budget directives from custom entries.
 
     Args:
@@ -140,9 +137,9 @@ def parse_budgets(
 
 
 def _matching_budgets(
-    budgets: list[Budget],
+    budgets: Sequence[Budget],
     date_active: datetime.date,
-) -> dict[str, Budget]:
+) -> Mapping[str, Budget]:
     """Find matching budgets.
 
     Returns:
@@ -163,7 +160,7 @@ def calculate_budget(
     account: str,
     date_from: datetime.date,
     date_to: datetime.date,
-) -> dict[str, Decimal]:
+) -> Mapping[str, Decimal]:
     """Calculate budget for an account.
 
     Args:
@@ -195,7 +192,7 @@ def calculate_budget_children(
     account: str,
     date_from: datetime.date,
     date_to: datetime.date,
-) -> dict[str, Decimal]:
+) -> Mapping[str, Decimal]:
     """Calculate budget for an account including budgets of its children.
 
     Args:

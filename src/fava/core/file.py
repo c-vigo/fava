@@ -10,7 +10,6 @@ from dataclasses import replace
 from hashlib import sha256
 from operator import attrgetter
 from pathlib import Path
-from typing import Iterable
 from typing import TYPE_CHECKING
 
 from markupsafe import Markup
@@ -36,6 +35,8 @@ from fava.util import next_key
 
 if TYPE_CHECKING:  # pragma: no cover
     import datetime
+    from collections.abc import Iterable
+    from collections.abc import Sequence
 
     from fava.beans.abc import Directive
     from fava.core import FavaLedger
@@ -110,7 +111,7 @@ class FileModule(FavaModule):
 
         Raises:
             NonSourceFileError: If the file is not one of the source files.
-            UnicodeDecodeError: If the file contains invalid unicode.
+            InvalidUnicodeError: If the file contains invalid unicode.
         """
         if str(path) not in self.ledger.options["include"]:
             raise NonSourceFileError(path)
@@ -135,7 +136,7 @@ class FileModule(FavaModule):
 
         Raises:
             NonSourceFileError: If the file is not one of the source files.
-            UnicodeDecodeError: If the file contains invalid unicode.
+            InvalidUnicodeError: If the file contains invalid unicode.
             ExternallyChangedError: If the file was changed externally.
         """
         with self._lock:
@@ -221,7 +222,7 @@ class FileModule(FavaModule):
             self.ledger.watcher.notify(Path(get_position(entry)[0]))
             self.ledger.extensions.after_delete_entry(entry)
 
-    def insert_entries(self, entries: list[Directive]) -> None:
+    def insert_entries(self, entries: Sequence[Directive]) -> None:
         """Insert entries.
 
         Args:
@@ -233,7 +234,10 @@ class FileModule(FavaModule):
             for entry in sorted(entries, key=_incomplete_sortkey):
                 path, updated_insert_options = insert_entry(
                     entry,
-                    self.ledger.beancount_file_path,
+                    (
+                        self.ledger.fava_options.default_file
+                        or self.ledger.beancount_file_path
+                    ),
                     insert_options=fava_options.insert_entry,
                     currency_column=fava_options.currency_column,
                     indent=fava_options.indent,
@@ -242,7 +246,7 @@ class FileModule(FavaModule):
                 self.ledger.fava_options.insert_entry = updated_insert_options
                 self.ledger.extensions.after_insert_entry(entry)
 
-    def render_entries(self, entries: list[Directive]) -> Iterable[Markup]:
+    def render_entries(self, entries: Sequence[Directive]) -> Iterable[Markup]:
         """Return entries in Beancount format.
 
         Only renders :class:`.Balance` and :class:`.Transaction`.
@@ -262,9 +266,9 @@ class FileModule(FavaModule):
                 ):
                     continue
                 try:
-                    yield Markup(get_entry_slice(entry)[0] + "\n")
+                    yield Markup(get_entry_slice(entry)[0] + "\n")  # noqa: S704
                 except (KeyError, FileNotFoundError):
-                    yield Markup(
+                    yield Markup(  # noqa: S704
                         to_string(
                             entry,
                             self.ledger.fava_options.currency_column,
@@ -306,7 +310,7 @@ def insert_metadata_in_file(
         file.write("".join(contents))
 
 
-def find_entry_lines(lines: list[str], lineno: int) -> list[str]:
+def find_entry_lines(lines: Sequence[str], lineno: int) -> Sequence[str]:
     """Lines of entry starting at lineno.
 
     Args:
@@ -418,9 +422,9 @@ def delete_entry_slice(
             line = lines[last_entry_line]
         except IndexError:
             break
-        if line.strip():
+        if line.strip():  # pragma: no cover
             break
-        last_entry_line += 1
+        last_entry_line += 1  # pragma: no cover
     lines = lines[:first_entry_line] + lines[last_entry_line:]
     newline = _file_newline_character(path)
     with path.open("w", encoding="utf-8", newline=newline) as file:
@@ -430,10 +434,10 @@ def delete_entry_slice(
 def insert_entry(
     entry: Directive,
     default_filename: str,
-    insert_options: list[InsertEntryOption],
+    insert_options: Sequence[InsertEntryOption],
     currency_column: int,
     indent: int,
-) -> tuple[Path, list[InsertEntryOption]]:
+) -> tuple[Path, Sequence[InsertEntryOption]]:
     """Insert an entry.
 
     Args:
@@ -486,7 +490,7 @@ def insert_entry(
 
 def find_insert_position(
     entry: Directive,
-    insert_options: list[InsertEntryOption],
+    insert_options: Sequence[InsertEntryOption],
     default_filename: str,
 ) -> tuple[str, int | None]:
     """Find insert position for an entry.

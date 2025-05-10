@@ -5,7 +5,6 @@ import iso4217currencies from "../lib/iso4217";
 import { localStorageSyncedStore } from "../lib/store";
 import type { ValidationT } from "../lib/validation";
 import { array, constants, string } from "../lib/validation";
-
 import {
   conversion_currencies,
   currencies_sorted,
@@ -66,9 +65,6 @@ export const chartToggledCurrencies = localStorageSyncedStore(
   array(string),
   () => [],
 );
-
-/** The currency to show the treemap of. */
-export const treemapCurrency = writable<string | null>(null);
 
 /** The currencies to over as conversion options. */
 const currency_suggestions = derived(

@@ -12,13 +12,12 @@
   import { notify, notify_err } from "../notifications";
   import router from "../router";
   import { options } from "../stores";
-
   import ModalBase from "./ModalBase.svelte";
 
-  $: shown = !!$files.length;
-  $: documents = $options.documents;
+  let shown = $derived(!!$files.length);
+  let documents = $derived($options.documents);
 
-  let documents_folder = "";
+  let documents_folder = $state("");
 
   function closeHandler() {
     $files = [];
@@ -26,7 +25,8 @@
     $hash = "";
   }
 
-  async function submit() {
+  async function submit(event: SubmitEvent) {
+    event.preventDefault();
     await Promise.all(
       $files.map(async ({ dataTransferFile, name }) => {
         const formData = new FormData();
@@ -34,7 +34,7 @@
         formData.append("hash", $hash);
         formData.append("folder", documents_folder);
         formData.append("file", dataTransferFile, name);
-        return put("add_document", formData).then(notify, (error) => {
+        return put("add_document", formData).then(notify, (error: unknown) => {
           notify_err(error, (err) => `Upload error: ${err.message}`);
         });
       }),
@@ -45,7 +45,7 @@
 </script>
 
 <ModalBase {shown} {closeHandler}>
-  <form on:submit|preventDefault={submit}>
+  <form onsubmit={submit}>
     <h3>{_("Upload file(s)")}:</h3>
     {#each $files as file}
       <div class="fieldset">
@@ -63,7 +63,6 @@
       </label>
     </div>
     <div class="fieldset account">
-      <!-- svelte-ignore a11y-label-has-associated-control -->
       <label>
         <span>{_("Account")}:</span>
         <AccountInput bind:value={$account} />

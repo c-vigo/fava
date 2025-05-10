@@ -6,7 +6,6 @@
   import { _ } from "../i18n";
   import { addEntryContinue } from "../stores/editor";
   import { closeOverlay, urlHash } from "../stores/url";
-
   import ModalBase from "./ModalBase.svelte";
 
   /** The entry types which have support adding in the modal. */
@@ -17,44 +16,48 @@
   ] as const;
 
   // For the first entry to be added, use today as the default date.
-  let entry: Transaction | Balance | Note = new Transaction(todayAsString());
+  let entry: Transaction | Balance | Note = $state.raw(
+    Transaction.empty(todayAsString()),
+  );
 
-  async function submit() {
+  async function submit(event: SubmitEvent) {
+    event.preventDefault();
     await saveEntries([entry]);
     const added_entry_date = entry.date;
     // Reuse the date of the entry that was just added.
-    // @ts-expect-error entry.constructor is only typed as "Function" but the
-    //                  new is required here to avoid a runtime error.
-    entry = new entry.constructor(added_entry_date);
+    // @ts-expect-error all these entries have that static method, but TS is not able to determine that
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    entry = entry.constructor.empty(added_entry_date);
     if (!$addEntryContinue) {
       closeOverlay();
     }
   }
 
-  $: shown = $urlHash === "add-transaction";
+  let shown = $derived($urlHash === "add-transaction");
 </script>
 
 <ModalBase {shown} focus=".payee input">
-  <form on:submit|preventDefault={submit}>
+  <form onsubmit={submit}>
     <h3>
       {_("Add")}
       {#each entryTypes as [Cls, displayName]}
         <button
           type="button"
           class:muted={!(entry instanceof Cls)}
-          on:click={() => {
+          onclick={() => {
             // when switching between entry types, keep the date.
-            entry = new Cls(entry.date);
+            entry = Cls.empty(entry.date);
           }}
         >
           {displayName}
         </button>
+        <!-- eslint-disable-next-line svelte/no-useless-mustaches -->
         {" "}
       {/each}
     </h3>
     <Entry bind:entry />
     <div class="flex-row">
-      <span class="spacer" />
+      <span class="spacer"></span>
       <label>
         <input type="checkbox" bind:checked={$addEntryContinue} />
         <span>{_("continue")}</span>

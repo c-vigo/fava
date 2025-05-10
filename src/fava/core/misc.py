@@ -6,22 +6,29 @@ import io
 import re
 from typing import TYPE_CHECKING
 
-from beancount.core.amount import CURRENCY_RE
-
 from fava.core.module_base import FavaModule
 from fava.helpers import BeancountError
 from fava.util.date import local_today
 
 if TYPE_CHECKING:  # pragma: no cover
+    from collections.abc import Sequence
+
     from fava.beans.abc import Custom
     from fava.beans.abc import Event
     from fava.core import FavaLedger
 
-    SidebarLinks = list[tuple[str, str]]
+    SidebarLinks = Sequence[tuple[str, str]]
 
 
 class FavaError(BeancountError):
     """Generic Fava-specific error."""
+
+
+NO_OPERATING_CURRENCY_ERROR = FavaError(
+    None,
+    "No operating currency specified. Please add one to your beancount file.",
+    None,
+)
 
 
 class FavaMisc(FavaModule):
@@ -32,7 +39,7 @@ class FavaMisc(FavaModule):
         #: User-chosen links to show in the sidebar.
         self.sidebar_links: SidebarLinks = []
         #: Upcoming events in the next few days.
-        self.upcoming_events: list[Event] = []
+        self.upcoming_events: Sequence[Event] = []
 
     def load_file(self) -> None:  # noqa: D102
         custom_entries = self.ledger.all_entries_by_type.Custom
@@ -43,18 +50,17 @@ class FavaMisc(FavaModule):
             self.ledger.fava_options.upcoming_events,
         )
 
-        if not self.ledger.options["operating_currency"]:
-            self.ledger.errors.append(
-                FavaError(
-                    None,
-                    "No operating currency specified. "
-                    "Please add one to your beancount file.",
-                    None,
-                ),
-            )
+    @property
+    def errors(self) -> Sequence[FavaError]:
+        """An error if no operating currency is set."""
+        return (
+            []
+            if self.ledger.options["operating_currency"]
+            else [NO_OPERATING_CURRENCY_ERROR]
+        )
 
 
-def sidebar_links(custom_entries: list[Custom]) -> list[tuple[str, str]]:
+def sidebar_links(custom_entries: Sequence[Custom]) -> SidebarLinks:
     """Parse custom entries for links.
 
     They have the following format:
@@ -70,7 +76,9 @@ def sidebar_links(custom_entries: list[Custom]) -> list[tuple[str, str]]:
     ]
 
 
-def upcoming_events(events: list[Event], max_delta: int) -> list[Event]:
+def upcoming_events(
+    events: Sequence[Event], max_delta: int
+) -> Sequence[Event]:
     """Parse entries for upcoming events.
 
     Args:
@@ -92,6 +100,7 @@ def upcoming_events(events: list[Event], max_delta: int) -> list[Event]:
     return upcoming
 
 
+CURRENCY_RE = r"[A-Z][A-Z0-9\'\.\_\-]{0,22}[A-Z0-9]"
 ALIGN_RE = re.compile(
     rf'([^";]*?)\s+([-+]?\s*[\d,]+(?:\.\d*)?)\s+({CURRENCY_RE}\b.*)',
 )

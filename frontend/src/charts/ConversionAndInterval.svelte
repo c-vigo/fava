@@ -3,7 +3,6 @@
   import { getInterval, intervalLabel, INTERVALS } from "../lib/interval";
   import { conversion, interval } from "../stores";
   import { conversions } from "../stores/chart";
-
   import SelectCombobox from "./SelectCombobox.svelte";
 
   const conversion_description = (option: string) => {
@@ -33,5 +32,5 @@
 <SelectCombobox
   bind:value={$interval}
   options={INTERVALS}
-  description={(o) => intervalLabel(getInterval(o))}
+  description={(o: string) => intervalLabel(getInterval(o))}
 />

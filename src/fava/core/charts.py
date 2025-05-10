@@ -9,35 +9,32 @@ from dataclasses import is_dataclass
 from datetime import date
 from datetime import timedelta
 from decimal import Decimal
+from re import Pattern
 from typing import Any
-from typing import Iterable
-from typing import Pattern
 from typing import TYPE_CHECKING
 
+from beancount.core.amount import Amount
 from beancount.core.data import Booking
-from beancount.core.data import iter_entry_dates
-from beancount.core.inventory import Inventory
 from beancount.core.number import MISSING
 from flask.json.provider import JSONProvider
 from simplejson import dumps as simplejson_dumps
 from simplejson import loads as simplejson_loads
 
-from fava.beans.abc import Amount
 from fava.beans.abc import Position
 from fava.beans.abc import Transaction
-from fava.beans.account import child_account_tester
+from fava.beans.account import account_tester
 from fava.beans.flags import FLAG_UNREALIZED
+from fava.beans.helpers import slice_entry_dates
 from fava.core.conversion import cost_or_value
-from fava.core.conversion import simple_units
 from fava.core.inventory import CounterInventory
 from fava.core.module_base import FavaModule
 from fava.core.tree import Tree
-from fava.helpers import FavaAPIError
 from fava.util import listify
 
 if TYPE_CHECKING:  # pragma: no cover
-    from fava.beans.funcs import ResultRow
-    from fava.beans.funcs import ResultType
+    from collections.abc import Iterable
+    from collections.abc import Mapping
+
     from fava.core import FilteredLedger
     from fava.core.conversion import Conversion
     from fava.core.inventory import SimpleCounterInventory
@@ -59,9 +56,9 @@ def _json_default(o: Any) -> Any:
         return o.pattern
     if is_dataclass(o):
         return {field.name: getattr(o, field.name) for field in fields(o)}
-    if o is MISSING:
+    if o is MISSING:  # pragma: no cover
         return None
-    raise TypeError
+    raise TypeError  # pragma: no cover
 
 
 def dumps(obj: Any, **_kwargs: Any) -> str:
@@ -103,8 +100,8 @@ class DateAndBalanceWithBudget:
 
     date: date
     balance: SimpleCounterInventory
-    account_balances: dict[str, SimpleCounterInventory]
-    budgets: dict[str, Decimal]
+    account_balances: Mapping[str, SimpleCounterInventory]
+    budgets: Mapping[str, Decimal]
 
 
 class ChartModule(FavaModule):
@@ -120,7 +117,7 @@ class ChartModule(FavaModule):
     ) -> SerialisedTreeNode:
         """Render an account tree."""
         if begin is not None and end is not None:
-            tree = Tree(iter_entry_dates(filtered.entries, begin, end))
+            tree = Tree(slice_entry_dates(filtered.entries, begin, end))
         else:
             tree = filtered.root_tree
         return tree.get(account_name).serialise(
@@ -147,6 +144,9 @@ class ChartModule(FavaModule):
             accounts: A single account (str) or a tuple of accounts.
             conversion: The conversion to use.
             invert: invert all numbers.
+
+        Yields:
+            The balances and budgets for the intervals.
         """
         prices = self.ledger.prices
 
@@ -155,10 +155,8 @@ class ChartModule(FavaModule):
 
         for date_range in intervals:
             inventory = CounterInventory()
-            entries = iter_entry_dates(
-                filtered.entries,
-                date_range.begin,
-                date_range.end,
+            entries = slice_entry_dates(
+                filtered.entries, date_range.begin, date_range.end
             )
             account_inventories: dict[str, CounterInventory] = defaultdict(
                 CounterInventory,
@@ -221,8 +219,8 @@ class ChartModule(FavaModule):
             account_name: A string.
             conversion: The conversion to use.
 
-        Returns:
-            A list of dicts for all dates on which the balance of the given
+        Yields:
+            Dicts for all dates on which the balance of the given
             account has changed containing the balance (in units) of the
             account at that date.
         """
@@ -230,7 +228,7 @@ class ChartModule(FavaModule):
         def _balances() -> Iterable[tuple[date, CounterInventory]]:
             last_date = None
             running_balance = CounterInventory()
-            is_child_account = child_account_tester(account_name)
+            is_child_account = account_tester(account_name, with_children=True)
 
             for entry in filtered.entries:
                 for posting in getattr(entry, "postings", []):
@@ -273,8 +271,8 @@ class ChartModule(FavaModule):
             interval: A string for the interval.
             conversion: The conversion to use.
 
-        Returns:
-            A list of dicts for all ends of the given interval containing the
+        Yields:
+            Dicts for all ends of the given interval containing the
             net worth (Assets + Liabilities) separately converted to all
             operating currencies.
         """
@@ -311,40 +309,3 @@ class ChartModule(FavaModule):
                     date_range.end_inclusive,
                 ),
             )
-
-    @staticmethod
-    def can_plot_query(types: list[ResultType]) -> bool:
-        """Whether we can plot the given query.
-
-        Args:
-            types: The list of types returned by the BQL query.
-        """
-        return (
-            len(types) == 2
-            and types[0][1] in {str, date}
-            and types[1][1] is Inventory
-        )
-
-    def query(
-        self,
-        types: list[ResultType],
-        rows: list[ResultRow],
-    ) -> list[dict[str, date | str | SimpleCounterInventory]]:
-        """Chart for a query.
-
-        Args:
-            types: The list of result row types.
-            rows: The result rows.
-        """
-        if not self.can_plot_query(types):
-            msg = "Can not plot the given chart."
-            raise FavaAPIError(msg)
-        if types[0][1] is date:
-            return [
-                {"date": date, "balance": simple_units(inv)}
-                for date, inv in rows
-            ]
-        return [
-            {"group": group, "balance": simple_units(inv)}
-            for group, inv in rows
-        ]

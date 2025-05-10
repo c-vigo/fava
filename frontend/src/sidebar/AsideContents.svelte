@@ -3,16 +3,17 @@
   import { _ } from "../i18n";
   import { keyboardShortcut } from "../keyboard-shortcuts";
   import { errors, extensions, ledgerData } from "../stores";
-
   import AccountSelector from "./AccountSelector.svelte";
   import Link from "./SidebarLink.svelte";
 
   const truncate = (s: string) => (s.length < 25 ? s : `${s.slice(25)}…`);
 
-  $: user_queries = $ledgerData.user_queries;
-  $: upcoming_events_count = $ledgerData.upcoming_events_count;
-  $: sidebar_links = $ledgerData.sidebar_links;
-  $: extension_reports = $extensions.filter((e) => e.report_title);
+  let user_queries = $derived($ledgerData.user_queries);
+  let upcoming_events_count = $derived($ledgerData.upcoming_events_count);
+  let sidebar_links = $derived($ledgerData.sidebar_links);
+  let extension_reports = $derived(
+    $extensions.filter((e) => e.report_title != null),
+  );
 </script>
 
 {#if sidebar_links.length}
@@ -23,16 +24,16 @@
   </ul>
 {/if}
 <ul class="navigation">
-  <Link report={"income_statement"} name={_("Income Statement")} key={"g i"} />
-  <Link report={"balance_sheet"} name={_("Balance Sheet")} key={"g b"} />
-  <Link report={"trial_balance"} name={_("Trial Balance")} key={"g t"} />
-  <Link report={"journal"} name={_("Journal")} key={"g j"} />
-  <Link report={"query"} name={_("Query")} key={"g q"}>
+  <Link report="income_statement" name={_("Income Statement")} key="g i" />
+  <Link report="balance_sheet" name={_("Balance Sheet")} key="g b" />
+  <Link report="trial_balance" name={_("Trial Balance")} key="g t" />
+  <Link report="journal" name={_("Journal")} key="g j" />
+  <Link report="query" name={_("Query")} key="g q">
     {#if user_queries.length}
       <ul class="submenu">
         {#each user_queries as { query_string, name }}
           <li>
-            <a href={urlFor("query/", { query_string })}>{truncate(name)}</a>
+            <a href={$urlFor("query/", { query_string })}>{truncate(name)}</a>
           </li>
         {/each}
       </ul>
@@ -41,19 +42,19 @@
   <AccountSelector />
 </ul>
 <ul class="navigation">
-  <Link report={"holdings"} name={_("Holdings")} key={"g h"} />
-  <Link report={"commodities"} name={_("Commodities")} key={"g c"} />
-  <Link report={"documents"} name={_("Documents")} key={"g d"} />
+  <Link report="holdings" name={_("Holdings")} key="g h" />
+  <Link report="commodities" name={_("Commodities")} key="g c" />
+  <Link report="documents" name={_("Documents")} key="g d" />
   <Link
-    report={"events"}
+    report="events"
     name={_("Events")}
-    key={"g E"}
+    key="g E"
     bubble={[upcoming_events_count, "info"]}
   />
-  <Link report={"statistics"} name={_("Statistics")} key={"g s"} />
+  <Link report="statistics" name={_("Statistics")} key="g s" />
 </ul>
 <ul class="navigation">
-  <Link report={"editor"} name={_("Editor")} key={"g e"}>
+  <Link report="editor" name={_("Editor")} key="g e">
     <a
       href="#add-transaction"
       class="secondary add-transaction"
@@ -63,16 +64,16 @@
   </Link>
   {#if $errors.length > 0}
     <Link
-      report={"errors"}
+      report="errors"
       name={_("Errors")}
       bubble={[$errors.length, "error"]}
     />
   {/if}
-  <Link report={"import"} name={_("Import")} key={"g n"}>
+  <Link report="import" name={_("Import")} key="g n">
     <a href="#export" class="secondary" title={_("Export")}>⬇</a>
   </Link>
-  <Link report={"options"} name={_("Options")} key={"g o"} />
-  <Link report={"help"} name={_("Help")} key={"g H"} />
+  <Link report="options" name={_("Options")} key="g o" />
+  <Link report="help" name={_("Help")} key="g H" />
 </ul>
 {#if extension_reports.length}
   <ul class="navigation">

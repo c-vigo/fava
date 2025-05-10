@@ -8,22 +8,31 @@
   import router from "../router";
   import { reloadAfterSavingEntrySlice } from "../stores/editor";
   import { closeOverlay } from "../stores/url";
-
   import DeleteButton from "./DeleteButton.svelte";
   import SaveButton from "./SaveButton.svelte";
 
-  export let beancount_language_support: LanguageSupport;
-  export let slice: string;
-  export let entry_hash: string;
-  export let sha256sum: string;
+  interface Props {
+    beancount_language_support: LanguageSupport;
+    slice: string;
+    entry_hash: string;
+    sha256sum: string;
+  }
 
-  let currentSlice = slice;
-  $: changed = currentSlice !== slice;
+  let {
+    beancount_language_support,
+    slice,
+    entry_hash = $bindable(),
+    sha256sum = $bindable(),
+  }: Props = $props();
 
-  let saving = false;
-  let deleting = false;
+  let currentSlice = $state(slice);
+  let changed = $derived(currentSlice !== slice);
 
-  async function save() {
+  let saving = $state(false);
+  let deleting = $state(false);
+
+  async function save(event?: SubmitEvent) {
+    event?.preventDefault();
     saving = true;
     try {
       sha256sum = await put("source_slice", {
@@ -45,10 +54,7 @@
   async function deleteSlice() {
     deleting = true;
     try {
-      await doDelete("source_slice", {
-        entry_hash,
-        sha256sum,
-      });
+      await doDelete("source_slice", { entry_hash, sha256sum });
       entry_hash = "";
       if ($reloadAfterSavingEntrySlice) {
         router.reload();
@@ -82,10 +88,10 @@
   );
 </script>
 
-<form on:submit|preventDefault={save}>
-  <div class="editor" use:renderEditor />
+<form onsubmit={save}>
+  <div class="editor" use:renderEditor></div>
   <div class="flex-row">
-    <span class="spacer" />
+    <span class="spacer"></span>
     <label>
       <input type="checkbox" bind:checked={$reloadAfterSavingEntrySlice} />
       <span>{_("reload")}</span>

@@ -1,6 +1,5 @@
 import { log_error } from "../log";
 import { set_mtime } from "../stores/mtime";
-
 import {
   defaultValue,
   isJsonObject,
@@ -23,20 +22,19 @@ export async function fetch(
  * Handles JSON content for a Promise returned by fetch, also handling an HTTP
  * error status.
  */
-async function handleJSON(response: Response): Promise<unknown> {
+async function handleJSON(
+  response: Response,
+): Promise<Record<string, unknown>> {
+  const data: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new FetchError(response.statusText);
-  }
-  const data: unknown = await response.json();
-  if (!isJsonObject(data)) {
-    throw new FetchError("Invalid response: not an object");
-  }
-  if (data.success !== true) {
     throw new FetchError(
-      typeof data.error === "string"
+      isJsonObject(data) && typeof data.error === "string"
         ? data.error
-        : "Invalid response: missing error",
+        : response.statusText,
     );
+  }
+  if (!isJsonObject(data)) {
+    throw new FetchError("Invalid response: not a valid JSON object");
   }
   return data;
 }
@@ -68,8 +66,8 @@ export async function fetchJSON(
  */
 export async function handleText(response: Response): Promise<string> {
   if (!response.ok) {
-    const msg = await response.text();
-    throw new Error(msg || response.statusText);
+    const msg = await response.text().catch(() => response.statusText);
+    throw new FetchError(msg);
   }
   return response.text();
 }

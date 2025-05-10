@@ -4,9 +4,8 @@ import { stack, stackOffsetDiverging } from "d3-shape";
 
 import type { FormatterContext } from "../format";
 import type { Result } from "../lib/result";
-import type { ValidationT } from "../lib/validation";
+import type { ValidationError, ValidationT } from "../lib/validation";
 import { array, date, number, object, record } from "../lib/validation";
-
 import type { ChartContext } from "./context";
 import type { TooltipContent } from "./tooltip";
 import { domHelpers } from "./tooltip";
@@ -55,7 +54,7 @@ export class BarChart {
   constructor(
     readonly name: string | null,
     /** The currencies that are shown in this bar chart. */
-    readonly currencies: string[],
+    readonly currencies: readonly string[],
     /** The data for the (single) bars for all the intervals in this chart. */
     private readonly bar_groups: BarChartDatum[],
   ) {
@@ -100,13 +99,16 @@ export class BarChart {
     c: FormatterContext,
     d: BarChartDatum,
     account: string,
+    $chartToggledCurrencies: readonly string[],
   ): TooltipContent {
     const content = [];
     content.push(domHelpers.em(account));
-    d.values.forEach((a) => {
-      const value = d.account_balances[account]?.[a.currency] ?? 0;
-      content.push(domHelpers.t(c.amount(value, a.currency)));
-      content.push(domHelpers.br());
+    d.values.forEach(({ currency }) => {
+      if (!$chartToggledCurrencies.includes(currency)) {
+        const value = d.account_balances[account]?.[currency] ?? 0;
+        content.push(domHelpers.t(c.amount(value, currency)));
+        content.push(domHelpers.br());
+      }
     });
     content.push(domHelpers.em(d.label));
     return content;
@@ -169,7 +171,7 @@ export function bar(
   label: string | null,
   json: unknown,
   $chartContext: ChartContext,
-): Result<BarChart, string> {
+): Result<BarChart, ValidationError> {
   return bar_validator(json).map((parsedData) => {
     const currencies = currencies_to_show(parsedData, $chartContext);
 

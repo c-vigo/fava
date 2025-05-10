@@ -10,7 +10,7 @@ following to your Beancount file.
 
 Below is a list of all possible options for Fava.
 
----
+______________________________________________________________________
 
 ## `language`
 
@@ -27,15 +27,16 @@ languages:
 - English (`en`)
 - French (`fr`)
 - German (`de`)
+- Japanese (`ja`)
 - Persian (`fa`)
-- Portuguese (`pt`)
+- Portuguese (`pt` and `pt_BR`)
 - Russian (`ru`)
 - Slovak (`sk`)
 - Spanish (`es`)
 - Swedish (`sv`)
 - Ukrainian (`uk`)
 
----
+______________________________________________________________________
 
 ## `locale`
 
@@ -45,15 +46,15 @@ This sets the locale that is used to render out numbers. For example, with the
 locale `en_IN` the number `1111111.33` will be rendered `11,11,111.33`,
 `1,111,111.33` with locale `en`, or `1.111.111,33` with locale `de`.
 
----
+______________________________________________________________________
 
 ## `default-file`
 
 Use this option to specify a default file for the editor to open. This option
-takes no value, the file the custom entry is in will be used as the default. If
-this option is not specified, Fava opens the main file by default.
+may optionally take a value of a filename to be the default. If you don't
+provide a filename, the file this custom option is in is used.
 
----
+______________________________________________________________________
 
 ## `default-page`
 
@@ -69,7 +70,7 @@ Note that the supplied path is relative. It is probably easiest to navigate to
 the URL in your browser and copy the portion of the URL after the 'title' of
 your beancount file into this option.
 
----
+______________________________________________________________________
 
 ## `fiscal-year-end`
 
@@ -91,7 +92,7 @@ Examples are:
 See [Fiscal Year on WikiPedia](https://en.wikipedia.org/wiki/Fiscal_year) for
 more examples.
 
----
+______________________________________________________________________
 
 ## `indent`
 
@@ -99,7 +100,7 @@ Default: 2.
 
 The number spaces for indentation.
 
----
+______________________________________________________________________
 
 ## `insert-entry`
 
@@ -113,10 +114,10 @@ a transaction, the account of the last posting is used) is matched against all
 of the matching options before the entry date. If the entry is a Transaction and
 no `insert-entry` option matches the account of the last posting the account of
 the second to last posting and so on will be tried. If no `insert-entry` option
-matches or none is given, the entry will be inserted at the end of the main
+matches or none is given, the entry will be inserted at the end of the default
 file.
 
----
+______________________________________________________________________
 
 ## `auto-reload`
 
@@ -128,7 +129,7 @@ to reload the page. If the file change is due to user interaction, e.g.,
 uploading a document or adding a transaction, Fava will always reload the page
 automatically.
 
----
+______________________________________________________________________
 
 ## `unrealized`
 
@@ -137,7 +138,7 @@ Default: `Unrealized`
 The subaccount of the Equity account to post unrealized gains to if the account
 trees are shown at market value.
 
----
+______________________________________________________________________
 
 ## `currency-column`
 
@@ -148,7 +149,7 @@ file or when using 'Align Amounts' in the editor. Fava tries to align so that
 the currencies all occur in the given column. Also, Fava will show a vertical
 line before this column in the editor.
 
----
+______________________________________________________________________
 
 ## `sidebar-show-queries`
 
@@ -157,7 +158,7 @@ Default: `5`
 The maximum number of queries to link to in the sidebar. Set this value to `0`
 to hide the links altogether.
 
----
+______________________________________________________________________
 
 ## `upcoming-events`
 
@@ -166,7 +167,7 @@ Default: `7`
 Show a notification bubble in the sidebar displaying the number of events less
 than `upcoming-events` days away. Set this value to `0` to disable this feature.
 
----
+______________________________________________________________________
 
 ## `show-closed-accounts`
 
@@ -184,7 +185,7 @@ These three options specify which accounts (not) to show in the account trees,
 like on the income statement. Accounts with a non-zero balance will always be
 shown.
 
----
+______________________________________________________________________
 
 ## `collapse-pattern`
 
@@ -198,7 +199,7 @@ Collapsing all accounts below a specific depth in the account tree can be
 accomplished by a regex such as: `.*:.*:.*` (this example collapses all accounts
 that are three levels deep).
 
----
+______________________________________________________________________
 
 ## `use-external-editor`
 
@@ -209,7 +210,7 @@ is used. See the
 [Beancount urlscheme](https://github.com/aumayr/beancount_urlscheme) project for
 details.
 
----
+______________________________________________________________________
 
 ## `account-journal-include-children`
 
@@ -218,7 +219,7 @@ Default: `true`
 This determines if the journal in the account report includes entries of
 sub-accounts.
 
----
+______________________________________________________________________
 
 ## `uptodate-indicator-grey-lookback-days`
 
@@ -227,7 +228,7 @@ Default: `60`
 If there has been no activity in given number of days since the last balance
 entry, then the grey uptodate-indicator is shown.
 
----
+______________________________________________________________________
 
 ## `import-config`
 
@@ -236,7 +237,7 @@ Default: Not set
 Path to a Beancount import configuration file. See the [Import](./import) help
 page for details.
 
----
+______________________________________________________________________
 
 ## `import-dirs`
 
@@ -244,7 +245,7 @@ Default: Not set
 
 Set the directories to be scanned by the Beancount import mechanism.
 
----
+______________________________________________________________________
 
 ## `invert-income-liabilities-equity`
 
@@ -261,7 +262,7 @@ if the income is greater than the expenses for a given timespan.
 Note: To keep consistency with the internal accounting of beancount, the journal
 and the individual account pages are not affected by this configuration option.
 
----
+______________________________________________________________________
 
 ## `conversion-currencies`
 

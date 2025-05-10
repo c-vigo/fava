@@ -14,7 +14,7 @@ import { fetch, handleText } from "./lib/fetch";
 import { DEFAULT_INTERVAL, getInterval } from "./lib/interval";
 import { log_error } from "./log";
 import { notify_err } from "./notifications";
-import type { Route } from "./reports/route";
+import type { FrontendRoute } from "./reports/route";
 import { raw_page_title } from "./sidebar/page-title";
 import { conversion, interval } from "./stores";
 import { showCharts } from "./stores/chart";
@@ -52,10 +52,10 @@ export class Router extends Events<"page-loaded"> {
   private article: HTMLElement;
 
   /** The frontend rendered routes. */
-  private frontend_routes?: Route[];
+  private frontend_routes?: FrontendRoute[];
 
   /** A possibly frontend rendered component. */
-  private frontend_route?: Route;
+  private frontend_route?: FrontendRoute;
 
   /**
    * Function to intercept navigation, e.g., when there are unsaved changes.
@@ -79,6 +79,14 @@ export class Router extends Events<"page-loaded"> {
     this.search = window.location.search;
 
     this.interruptHandlers = new Set();
+  }
+
+  /**
+   * Whether an interrupt handler is active like on the editor or import report.
+   * Avoid auto-reloading in that case.
+   */
+  get hasInteruptHandler(): boolean {
+    return this.interruptHandlers.size > 0;
   }
 
   /**
@@ -109,8 +117,8 @@ export class Router extends Events<"page-loaded"> {
 
   private async frontendRender(url: URL): Promise<void> {
     const report = getUrlPath(url);
-    const route = this.frontend_routes?.find((r) =>
-      report?.startsWith(`${r.report}/`),
+    const route = this.frontend_routes?.find(
+      (r) => report?.startsWith(`${r.report}/`) === true,
     );
     if (route) {
       is_loading_internal.set(true);
@@ -130,7 +138,7 @@ export class Router extends Events<"page-loaded"> {
    * This should be called once when the page has been loaded. Initializes the
    * router and takes over clicking on links.
    */
-  init(frontend_routes: Route[]): void {
+  init(frontend_routes: FrontendRoute[]): void {
     this.frontend_routes = frontend_routes;
     urlHash.set(window.location.hash.slice(1));
     this.updateState();
@@ -177,6 +185,23 @@ export class Router extends Events<"page-loaded"> {
     }
   }
 
+  /**
+   * Set the URL parameter and push a history state for it if changed.
+   */
+  set_search_param(key: string, value: string): void {
+    const url = new URL(window.location.href);
+    const current_value = url.searchParams.get(key) ?? "";
+    if (value !== current_value) {
+      if (value) {
+        url.searchParams.set(key, value);
+      } else {
+        url.searchParams.delete(key);
+      }
+      window.history.pushState(null, "", url);
+      this.updateState();
+    }
+  }
+
   /*
    * Replace <article> contents with the page at `url`.
    *
@@ -186,7 +211,6 @@ export class Router extends Events<"page-loaded"> {
   private async loadURL(url: string, historyState = true): Promise<void> {
     const leaveMessage = this.shouldInterrupt();
     if (leaveMessage != null) {
-      // eslint-disable-next-line no-alert
       if (!window.confirm(leaveMessage)) {
         return;
       }
@@ -265,31 +289,32 @@ export class Router extends Events<"page-loaded"> {
         (link.host !== window.location.host ||
           !link.protocol.startsWith("http")));
 
-    delegate(
-      document,
-      "click",
-      "a",
-      (event: MouseEvent, link: HTMLAnchorElement | SVGAElement) => {
-        if (!is_normal_click(event)) {
-          return;
-        }
-        if (event.defaultPrevented) {
-          return;
-        }
-        if (link.getAttribute("href")?.charAt(0) === "#") {
-          return;
-        }
-        if (is_external_link(link)) {
-          return;
-        }
+    delegate(document, "click", "a", (event, link) => {
+      if (
+        !(event instanceof MouseEvent) ||
+        !(link instanceof HTMLAnchorElement || link instanceof SVGAElement)
+      ) {
+        return;
+      }
+      if (!is_normal_click(event)) {
+        return;
+      }
+      if (event.defaultPrevented) {
+        return;
+      }
+      if (link.getAttribute("href")?.charAt(0) === "#") {
+        return;
+      }
+      if (is_external_link(link)) {
+        return;
+      }
 
-        event.preventDefault();
-        const href =
-          link instanceof HTMLAnchorElement ? link.href : link.href.baseVal;
+      event.preventDefault();
+      const href =
+        link instanceof HTMLAnchorElement ? link.href : link.href.baseVal;
 
-        this.navigate(href);
-      },
-    );
+      this.navigate(href);
+    });
   }
 
   /*

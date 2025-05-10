@@ -7,11 +7,11 @@ from bisect import bisect
 from collections import Counter
 from collections import defaultdict
 from decimal import Decimal
-from typing import Iterable
-from typing import Sequence
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
+    from collections.abc import Iterable
+    from collections.abc import Sequence
     from typing import TypeAlias
 
     from fava.beans.abc import Price
@@ -23,7 +23,7 @@ ZERO = Decimal()
 ONE = Decimal(1)
 
 
-class DateKeyWrapper(Sequence[datetime.date]):
+class DateKeyWrapper(list[datetime.date]):
     """A class wrapping a list of prices for bisect.
 
     This is needed before Python 3.10, which adds the key argument.
@@ -42,9 +42,13 @@ class DateKeyWrapper(Sequence[datetime.date]):
 
 
 def _keep_last_per_day(
-    prices: list[PricePoint],
+    prices: Sequence[PricePoint],
 ) -> Iterable[PricePoint]:
-    """In a sorted non-empty list of prices, keep the last one for each day."""
+    """In a sorted non-empty list of prices, keep the last one for each day.
+
+    Yields:
+        The filtered prices.
+    """
     prices_iter = iter(prices)
     last = next(prices_iter)
     for price in prices_iter:
@@ -84,7 +88,7 @@ class FavaPriceMap:
             raw_map[base_quote].append((price.date, rate))
             counts[base_quote] += 1
             if rate != ZERO:
-                raw_map[(price.amount.currency, price.currency)].append(
+                raw_map[price.amount.currency, price.currency].append(
                     (price.date, ONE / rate),
                 )
         self._forward_pairs = [
@@ -98,7 +102,7 @@ class FavaPriceMap:
 
     def commodity_pairs(
         self,
-        operating_currencies: list[str],
+        operating_currencies: Sequence[str],
     ) -> list[BaseQuote]:
         """List pairs of commodities.
 

@@ -2,7 +2,6 @@ import type { Command } from "@codemirror/view";
 
 import { put } from "../api";
 import { notify_err } from "../notifications";
-
 import { replaceContents } from "./editor-transactions";
 
 export const beancountFormat: Command = (cm) => {
@@ -10,7 +9,7 @@ export const beancountFormat: Command = (cm) => {
     (data) => {
       cm.dispatch(replaceContents(cm.state, data));
     },
-    (error) => {
+    (error: unknown) => {
       notify_err(error, (err) => `Formatting source failed: ${err.message}`);
     },
   );

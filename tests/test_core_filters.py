@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import pytest
@@ -13,6 +14,7 @@ from fava.core.filters import AdvancedFilter
 from fava.core.filters import FilterError
 from fava.core.filters import FilterSyntaxLexer
 from fava.core.filters import Match
+from fava.core.filters import MatchAmount
 from fava.core.filters import TimeFilter
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -27,6 +29,34 @@ def test_match() -> None:
     assert not Match("asdf")("fdsadfs")
     assert not Match("^asdf")("aasdfasdf")
     assert Match("(((")("(((")
+
+
+def test_match_amount() -> None:
+    one = Decimal(1)
+    two = Decimal(2)
+
+    one_amt = create.amount("1 EUR")
+    two_amt = create.amount("2 EUR")
+    three_amt = create.amount("3 EUR")
+
+    assert MatchAmount("=", one)(one_amt)
+    assert MatchAmount("=", one)(one_amt)
+
+    assert MatchAmount(">", two)(three_amt)
+    assert not MatchAmount(">", two)(two_amt)
+    assert not MatchAmount(">", two)(one_amt)
+
+    assert MatchAmount(">=", two)(three_amt)
+    assert MatchAmount(">=", two)(two_amt)
+    assert not MatchAmount(">=", two)(one_amt)
+
+    assert not MatchAmount("<", two)(three_amt)
+    assert not MatchAmount("<", two)(two_amt)
+    assert MatchAmount("<", two)(one_amt)
+
+    assert not MatchAmount("<=", two)(three_amt)
+    assert MatchAmount("<=", two)(two_amt)
+    assert MatchAmount("<=", two)(one_amt)
 
 
 def test_lexer_basic() -> None:
@@ -59,13 +89,18 @@ def test_lexer_literals_in_string() -> None:
 
 def test_lexer_key() -> None:
     lex = FilterSyntaxLexer().lex
-    data = 'payee:asdfasdf ^some_link somekey:"testtest" '
+    data = 'payee:asdfasdf ^some_link somekey:"testtest" units>80.2 '
     assert [(tok.type, tok.value) for tok in lex(data)] == [
         ("KEY", "payee"),
+        ("EQ_OP", ":"),
         ("STRING", "asdfasdf"),
         ("LINK", "some_link"),
         ("KEY", "somekey"),
+        ("EQ_OP", ":"),
         ("STRING", "testtest"),
+        ("KEY", "units"),
+        ("CMP_OP", ">"),
+        ("NUMBER", Decimal("80.2")),
     ]
 
 
@@ -75,11 +110,13 @@ def test_lexer_parentheses() -> None:
     assert [(tok.type, tok.value) for tok in lex(data)] == [
         ("(", "("),
         ("KEY", "payee"),
+        ("EQ_OP", ":"),
         ("STRING", "asdfasdf"),
         ("LINK", "some_link"),
         (")", ")"),
         ("(", "("),
         ("KEY", "somekey"),
+        ("EQ_OP", ":"),
         ("STRING", "testtest"),
         (")", ")"),
     ]
@@ -119,6 +156,10 @@ def test_filterexception() -> None:
         ('name:".*etf"', 4),
         ('name:".*etf$"', 3),
         ('any(overage:"GB$")', 1),
+        ("=26.87", 1),
+        (">=17500", 3),
+        (">=17500 <18000", 1),
+        ("any(units >= 17500)", 3),
     ],
 )
 def test_advanced_filter(
@@ -149,11 +190,13 @@ def test_null_meta_posting() -> None:
 
 
 def test_account_filter(example_ledger: FavaLedger) -> None:
-    account_filter = AccountFilter("Assets")
+    account_filter = AccountFilter("")
+    filtered_entries = account_filter.apply(example_ledger.all_entries)
+    assert filtered_entries is example_ledger.all_entries
 
+    account_filter = AccountFilter("Assets")
     filtered_entries = account_filter.apply(example_ledger.all_entries)
     assert len(filtered_entries) == 541
-
     for entry in filtered_entries:
         assert any(
             has_component(a, "Assets") for a in get_entry_accounts(entry)

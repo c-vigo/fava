@@ -3,6 +3,7 @@ import assert from "uvu/assert";
 
 import {
   dateFormat,
+  formatter_context,
   localeFormatter,
   timeFilterDateFormat,
 } from "../src/format";
@@ -28,6 +29,21 @@ test("locale number formatting", () => {
   assert.is(de_negative(1000), "1.000");
 });
 
+test("formatter context", () => {
+  const ctx = formatter_context(false, null, {});
+  assert.equal(ctx.num(10, "EUR"), "10.00");
+  assert.equal(ctx.amount(10, "EUR"), "10.00 EUR");
+
+  const de_ctx = formatter_context(false, "de_DE", { EUR: 1 });
+  assert.equal(de_ctx.num(10, "EUR"), "10,0");
+  assert.equal(de_ctx.amount(10, "EUR"), "10,0 EUR");
+  assert.equal(de_ctx.amount(10, "USD"), "10,00 USD");
+
+  const incognito_ctx = formatter_context(true, null, { USD: 4 });
+  assert.equal(incognito_ctx.num(10, "EUR"), "XX.XX");
+  assert.equal(incognito_ctx.num(10, "USD"), "XX.XXXX");
+});
+
 test("time filter date formatting", () => {
   const { day, month, week, quarter, year, ...rest } = timeFilterDateFormat;
   assert.equal(rest, {});
@@ -37,8 +53,8 @@ test("time filter date formatting", () => {
   assert.is(day(date), "2020-03-20");
   assert.is(month(janfirst), "2020-01");
   assert.is(month(date), "2020-03");
-  assert.is(week(janfirst), "2020-W00");
-  assert.is(week(date), "2020-W11");
+  assert.is(week(janfirst), "2020-W01");
+  assert.is(week(date), "2020-W12");
   assert.is(quarter(janfirst), "2020-Q1");
   assert.is(quarter(date), "2020-Q1");
   assert.is(year(janfirst), "2020");
@@ -54,8 +70,8 @@ test("human-readable date formatting", () => {
   assert.is(day(date), "2020-03-20");
   assert.is(month(janfirst), "Jan 2020");
   assert.is(month(date), "Mar 2020");
-  assert.is(week(janfirst), "2020W00");
-  assert.is(week(date), "2020W11");
+  assert.is(week(janfirst), "2020W01");
+  assert.is(week(date), "2020W12");
   assert.is(quarter(janfirst), "2020Q1");
   assert.is(quarter(date), "2020Q1");
   assert.is(year(janfirst), "2020");

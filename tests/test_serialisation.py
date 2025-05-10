@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import sys
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,7 @@ from fava.core.charts import loads
 from fava.helpers import FavaAPIError
 from fava.serialisation import deserialise
 from fava.serialisation import deserialise_posting
+from fava.serialisation import InvalidAmountError
 from fava.serialisation import serialise
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -69,6 +71,10 @@ def test_serialise_txn() -> None:
     assert serialised == json_txn
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="skipped on Windows due to different absolute path",
+)
 def test_serialise_entry_types(
     snapshot: SnapshotFunc,
     load_doc_entries: list[Directive],
@@ -92,6 +98,7 @@ def test_serialise_entry_types(
 
     2018-12-15 commodity USD
     2018-12-16 price USD 1 EUR
+    2012-12-12 custom "string" 1 EUR FALSE
 
     2019-12-12 query "query name" "journal"
     """
@@ -197,6 +204,11 @@ def test_deserialise_posting(
     assert deserialise_posting(json) == pos
 
 
+def test_deserialise_posting_invalid_amount() -> None:
+    with pytest.raises(InvalidAmountError):
+        deserialise_posting({"account": "Assets", "amount": "10 ////"})
+
+
 def test_deserialise_posting_and_format(snapshot: SnapshotFunc) -> None:
     txn = create.transaction(
         {},
@@ -216,12 +228,10 @@ def test_deserialise_posting_and_format(snapshot: SnapshotFunc) -> None:
 
 def test_serialise_balance() -> None:
     bal = create.balance(
-        {},
-        datetime.date(2019, 9, 17),
-        "Assets:ETrade:Cash",
-        create.amount("0.1234567891011121314151617 CHF"),
-        None,
-        None,
+        meta={},
+        date=datetime.date(2019, 9, 17),
+        account="Assets:ETrade:Cash",
+        amount=create.amount("0.1234567891011121314151617 CHF"),
     )
 
     json = {
@@ -290,10 +300,10 @@ def test_deserialise_balance() -> None:
         "meta": {},
     }
     bal = create.balance(
-        {},
-        datetime.date(2017, 12, 12),
-        "Assets:ETrade:Cash",
-        "100 USD",
+        meta={},
+        date=datetime.date(2017, 12, 12),
+        account="Assets:ETrade:Cash",
+        amount="100 USD",
     )
     assert deserialise(json_bal) == bal
 
@@ -307,9 +317,19 @@ def test_deserialise_note() -> None:
         "meta": {},
     }
     note = create.note(
-        {},
-        datetime.date(2017, 12, 12),
-        "Assets:ETrade:Cash",
-        "This is some comment or note",
+        meta={},
+        date=datetime.date(2017, 12, 12),
+        account="Assets:ETrade:Cash",
+        comment="This is some comment or note",
     )
     assert deserialise(json_note) == note
+
+
+def test_deserialise_unknown() -> None:
+    json_custom = {
+        "t": "Custom",
+        "date": "2017-12-12",
+        "meta": {},
+    }
+    with pytest.raises(FavaAPIError):
+        deserialise(json_custom)

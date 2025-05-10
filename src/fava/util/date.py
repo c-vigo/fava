@@ -17,10 +17,11 @@ from typing import TYPE_CHECKING
 
 from flask_babel import gettext  # type: ignore[import-untyped]
 
+from fava.util.unreachable import assert_never
+
 if TYPE_CHECKING:  # pragma: no cover
-    from typing import Iterable
-    from typing import Iterator
-    from typing import Never
+    from collections.abc import Iterable
+    from collections.abc import Iterator
 
 
 IS_RANGE_RE = re.compile(r"(.*?)(?:-|to)(?=\s*(?:fy)*\d{4})(.*)")
@@ -124,7 +125,7 @@ class Interval(Enum):
         if self is Interval.MONTH:
             return date.strftime("%b %Y")
         if self is Interval.WEEK:
-            return date.strftime("%YW%W")
+            return date.strftime("%GW%V")
         return date.strftime("%Y-%m-%d")
 
     def format_date_filter(self, date: datetime.date) -> str:
@@ -136,7 +137,7 @@ class Interval(Enum):
         if self is Interval.MONTH:
             return date.strftime("%Y-%m")
         if self is Interval.WEEK:
-            return date.strftime("%Y-W%W")
+            return date.strftime("%G-W%V")
         return date.strftime("%Y-%m-%d")
 
 
@@ -165,17 +166,6 @@ def get_prev_interval(
     if interval is Interval.WEEK:
         return date - timedelta(date.weekday())
     return date
-
-
-class UnreachableCodeAssertionError(AssertionError):
-    """Expected code to be unreachable."""
-
-    def __init__(self) -> None:
-        super().__init__("Expected code to be unreachable")
-
-
-def _assert_never(_: Never) -> Never:  # pragma: no cover
-    raise UnreachableCodeAssertionError
 
 
 def get_next_interval(  # noqa: PLR0911
@@ -207,7 +197,7 @@ def get_next_interval(  # noqa: PLR0911
             return date + timedelta(7 - date.weekday())
         if interval is Interval.DAY:
             return date + timedelta(1)
-        return _assert_never(interval)  # pragma: no cover
+        return assert_never(interval)  # pragma: no cover
     except (ValueError, OverflowError):
         return datetime.date.max
 
@@ -217,7 +207,11 @@ def interval_ends(
     last: datetime.date,
     interval: Interval,
 ) -> Iterator[datetime.date]:
-    """Get interval ends."""
+    """Get interval ends.
+
+    Yields:
+        The ends of the intervals.
+    """
     yield get_prev_interval(first, interval)
     while first < last:
         first = get_next_interval(first, interval)
@@ -262,7 +256,7 @@ def dateranges(
     ends = interval_ends(begin, end, interval)
     left, right = tee(ends)
     next(right, None)
-    for interval_begin, interval_end in zip(left, right):
+    for interval_begin, interval_end in zip(left, right, strict=False):
         yield DateRange(interval_begin, interval_end)
 
 
@@ -319,7 +313,7 @@ def substitute(
         if interval == "week":
             string = string.replace(
                 complete_match,
-                (today + timedelta(offset * 7)).strftime("%Y-W%W"),
+                (today + timedelta(offset * 7)).strftime("%G-W%V"),
             )
         if interval == "day":
             string = string.replace(
@@ -389,7 +383,11 @@ def parse_date(  # noqa: PLR0911
     match = WEEK_RE.match(string)
     if match:
         year, week = map(int, match.group(1, 2))
-        start = datetime.date.fromisocalendar(year, week + 1, 1)
+        start = (
+            datetime.datetime.strptime(f"{year}-W{week}-1", "%G-W%V-%w")
+            .replace(tzinfo=datetime.timezone.utc)
+            .date()
+        )
         return start, get_next_interval(start, Interval.WEEK)
 
     match = QUARTER_RE.match(string)
@@ -496,9 +494,8 @@ def days_in_daterange(
         start_date: A start date.
         end_date: An end date (exclusive).
 
-    Returns:
-        An iterator yielding all days between `start_date` to `end_date`.
-
+    Yields:
+        All days between `start_date` to `end_date`.
     """
     for diff in range((end_date - start_date).days):
         yield start_date + timedelta(diff)
@@ -529,4 +526,4 @@ def number_of_days_in_period(interval: Interval, date: datetime.date) -> int:
     if interval is Interval.YEAR:
         date = datetime.date(date.year, 1, 1)
         return (get_next_interval(date, Interval.YEAR) - date).days
-    return _assert_never(interval)  # pragma: no cover
+    return assert_never(interval)  # pragma: no cover

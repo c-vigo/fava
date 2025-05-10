@@ -1,4 +1,5 @@
 import { get } from "../../api";
+import type { Commodities } from "../../api/validators";
 import type { FavaChart } from "../../charts";
 import { LineChart } from "../../charts/line";
 import { domHelpers } from "../../charts/tooltip";
@@ -6,17 +7,14 @@ import { day } from "../../format";
 import { _ } from "../../i18n";
 import { getURLFilters } from "../../stores/filters";
 import { Route } from "../route";
-
 import CommoditiesSvelte from "./Commodities.svelte";
 
-export const commodities = new Route<{
-  commodities: {
-    base: string;
-    quote: string;
-    prices: [Date, number][];
-  }[];
+export interface CommoditiesReportProps {
   charts: FavaChart[];
-}>(
+  commodities: Commodities;
+}
+
+export const commodities = new Route<CommoditiesReportProps>(
   "commodities",
   CommoditiesSvelte,
   async (url) =>

@@ -3,11 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Callable
-from typing import Dict
 from typing import NamedTuple
-from typing import Optional
-from typing import Tuple
 from typing import TYPE_CHECKING
 
 from fava.beans.protocols import Cost
@@ -15,8 +11,9 @@ from fava.beans.str import cost_to_string
 
 if TYPE_CHECKING:  # pragma: no cover
     import datetime
+    from collections.abc import Callable
+    from collections.abc import Iterator
     from typing import Concatenate
-    from typing import Iterator
     from typing import ParamSpec
 
     from fava.beans.protocols import Amount
@@ -26,7 +23,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 ZERO = Decimal()
-InventoryKey = Tuple[str, Optional[Cost]]
+InventoryKey = tuple[str, Cost | None]
 
 
 class _Amount(NamedTuple):
@@ -46,7 +43,7 @@ class _Position(NamedTuple):
     cost: Cost | None
 
 
-class SimpleCounterInventory(Dict[str, Decimal]):
+class SimpleCounterInventory(dict[str, Decimal]):
     """A simple inventory mapping just strings to numbers."""
 
     def is_empty(self) -> bool:
@@ -77,12 +74,12 @@ class SimpleCounterInventory(Dict[str, Decimal]):
         counter = SimpleCounterInventory()
         for currency, number in self.items():
             pos = _Position(_Amount(number, currency), None)
-            amount = reducer(pos, *args)
+            amount = reducer(pos, *args)  # type: ignore[call-arg]
             counter.add(amount.currency, amount.number)
         return counter
 
 
-class CounterInventory(Dict[InventoryKey, Decimal]):
+class CounterInventory(dict[InventoryKey, Decimal]):
     """A lightweight inventory.
 
     This is intended as a faster alternative to Beancount's Inventory class.
@@ -132,7 +129,7 @@ class CounterInventory(Dict[InventoryKey, Decimal]):
         counter = SimpleCounterInventory()
         for (currency, cost), number in self.items():
             pos = _Position(_Amount(number, currency), cost)
-            amount = reducer(pos, *args)
+            amount = reducer(pos, *args)  # type: ignore[call-arg]
             counter.add(amount.currency, amount.number)
         return counter
 

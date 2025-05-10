@@ -1,6 +1,3 @@
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable no-console */
-
 import chokidar from "chokidar";
 import { context } from "esbuild";
 import svelte from "esbuild-svelte";
@@ -34,13 +31,19 @@ async function runBuild(dev: boolean) {
     format: "esm",
     bundle: true,
     outfile: "../src/fava/static/app.js",
-    external: ["fs", "path"], // for web-tree-sitter
+    conditions: dev ? ["development"] : ["production"],
+    external: ["module"], // for web-tree-sitter
     loader: {
       ".wasm": "file",
       ".woff": "empty",
       ".woff2": "file",
     },
-    plugins: [svelte({ preprocess: typescript() })],
+    plugins: [
+      svelte({
+        compilerOptions: { dev, runes: true },
+        preprocess: typescript(),
+      }),
+    ],
     sourcemap: dev,
     target: compilerOptions.target,
   });
@@ -58,7 +61,7 @@ async function runBuild(dev: boolean) {
         () => {
           console.log("finished rebuild");
         },
-        (err) => {
+        (err: unknown) => {
           console.error(err);
         },
       );
@@ -68,7 +71,7 @@ async function runBuild(dev: boolean) {
         awaitWriteFinish: true,
         ignoreInitial: true,
       })
-      .on("all", (eventName, path) => {
+      .on("all", (eventName: string, path: string) => {
         console.log(`${path} ${eventName}`);
         rebuild();
       });

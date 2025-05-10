@@ -2,11 +2,11 @@
  * This script initialises the AsideWithButton.svelte component.
  */
 
+import { mount } from "svelte";
 import { get as store_get } from "svelte/store";
 
 import Modals from "../modals/Modals.svelte";
 import { ledger_title } from "../stores";
-
 import HeaderAndAside from "./HeaderAndAside.svelte";
 import { page_title } from "./page-title";
 
@@ -15,13 +15,12 @@ export function initSidebar(): void {
     document.title = `${title} - ${store_get(ledger_title)}`;
   });
 
-  // eslint-disable-next-line no-new
-  new HeaderAndAside({
+  mount(HeaderAndAside, {
     target: document.body,
     anchor: document.querySelector("article") ?? undefined,
   });
-  // eslint-disable-next-line no-new
-  new Modals({
+
+  mount(Modals, {
     target: document.body,
   });
 }

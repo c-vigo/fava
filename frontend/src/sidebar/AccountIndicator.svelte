@@ -3,19 +3,23 @@
 
   import { account_details, fava_options } from "../stores";
 
-  /** The account name. */
-  export let account: string;
-  /** Whether the indicator should be slightly smaller for the tree tables. */
-  export let small = false;
+  interface Props {
+    /** The account name. */
+    account: string;
+    /** Whether the indicator should be slightly smaller for the tree tables. */
+    small?: boolean;
+  }
 
-  $: details = $account_details[account];
-  $: status = details?.uptodate_status;
-  $: balance = details?.balance_string ?? "";
-  $: last_entry = details?.last_entry;
+  let { account, small = false }: Props = $props();
 
-  $: last_account_activity = last_entry
-    ? timeDay.count(last_entry.date, new Date())
-    : 0;
+  let details = $derived($account_details[account]);
+  let status = $derived(details?.uptodate_status);
+  let balance = $derived(details?.balance_string ?? "");
+  let last_entry = $derived(details?.last_entry);
+
+  let last_account_activity = $derived(
+    last_entry ? timeDay.count(last_entry.date, new Date()) : 0,
+  );
 </script>
 
 {#if status}
@@ -24,7 +28,7 @@
       class="status-indicator status-green"
       class:small
       title="The last entry is a passing balance check."
-    />
+    ></span>
   {:else}
     <copyable-text
       class="status-indicator status-{status}"
@@ -39,14 +43,14 @@ Click to copy the balance directives to the clipboard:
 
 ${balance}`}
       data-clipboard-text={balance}
-    />
+    ></copyable-text>
   {/if}
   {#if last_account_activity > $fava_options.uptodate_indicator_grey_lookback_days}
     <span
       class="status-indicator status-gray"
       class:small
       title="This account has not been updated in a while. ({last_account_activity} days ago)"
-    />
+    ></span>
   {/if}
 {/if}
 

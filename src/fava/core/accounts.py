@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field
-from typing import Dict
 from typing import TYPE_CHECKING
 
 from fava.beans.abc import Balance
@@ -20,6 +19,8 @@ from fava.util.date import local_today
 
 if TYPE_CHECKING:  # pragma: no cover
     import datetime
+    from collections.abc import Sequence
+    from typing import Literal
 
     from fava.beans.abc import Directive
     from fava.beans.abc import Meta
@@ -27,25 +28,22 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 def get_last_entry(
-    txn_postings: list[Directive | TransactionPosting],
+    txn_postings: Sequence[Directive | TransactionPosting],
 ) -> Directive | None:
     """Last entry."""
     for txn_posting in reversed(txn_postings):
-        if (
-            isinstance(txn_posting, TransactionPosting)
-            and txn_posting.transaction.flag == FLAG_UNREALIZED
-        ):
-            continue
-
         if isinstance(txn_posting, TransactionPosting):
-            return txn_posting.transaction
-        return txn_posting
+            transaction = txn_posting.transaction
+            if transaction.flag != FLAG_UNREALIZED:
+                return transaction
+        else:
+            return txn_posting
     return None
 
 
 def uptodate_status(
-    txn_postings: list[Directive | TransactionPosting],
-) -> str | None:
+    txn_postings: Sequence[Directive | TransactionPosting],
+) -> Literal["green", "yellow", "red"] | None:
     """Status of the last balance or transaction.
 
     Args:
@@ -60,9 +58,7 @@ def uptodate_status(
     """
     for txn_posting in reversed(txn_postings):
         if isinstance(txn_posting, Balance):
-            if txn_posting.diff_amount:
-                return "red"
-            return "green"
+            return "red" if txn_posting.diff_amount else "green"
         if (
             isinstance(txn_posting, TransactionPosting)
             and txn_posting.transaction.flag != FLAG_UNREALIZED
@@ -113,7 +109,7 @@ class AccountData:
     last_entry: LastEntry | None = None
 
 
-class AccountDict(FavaModule, Dict[str, AccountData]):
+class AccountDict(FavaModule, dict[str, AccountData]):
     """Account info dictionary."""
 
     EMPTY = AccountData()

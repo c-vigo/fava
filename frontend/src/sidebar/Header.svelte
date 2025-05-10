@@ -2,14 +2,13 @@
   import { keyboardShortcut } from "../keyboard-shortcuts";
   import router from "../router";
   import { ledger_title, ledgerData } from "../stores";
-
   import FilterForm from "./FilterForm.svelte";
   import HeaderIcon from "./HeaderIcon.svelte";
   import { has_changes } from "./page-title";
   import PageTitle from "./PageTitle.svelte";
 
-  $: other_ledgers = $ledgerData.other_ledgers;
-  $: has_dropdown = other_ledgers.length;
+  let other_ledgers = $derived($ledgerData.other_ledgers);
+  let has_dropdown = $derived(other_ledgers.length);
 </script>
 
 <header>
@@ -33,11 +32,11 @@
     hidden={!$has_changes}
     class="reload-page"
     use:keyboardShortcut={"r"}
-    on:click={router.reload.bind(router)}
+    onclick={router.reload.bind(router)}
   >
     &#8635;
   </button>
-  <span class="spacer" />
+  <span class="spacer"></span>
   <FilterForm />
 </header>
 
@@ -92,11 +91,5 @@
   .beancount-files a:hover {
     color: var(--background);
     background-color: var(--link-color);
-  }
-
-  @media print {
-    header > :global(:not(h1)) {
-      display: none;
-    }
   }
 </style>

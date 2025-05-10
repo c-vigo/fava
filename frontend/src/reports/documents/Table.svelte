@@ -5,11 +5,14 @@
   import { basename } from "../../lib/paths";
   import { DateColumn, Sorter, StringColumn } from "../../sort";
   import SortHeader from "../../sort/SortHeader.svelte";
-
   import { selectedAccount } from "./stores";
 
-  export let data: Document[];
-  export let selected: Document | null = null;
+  interface Props {
+    data: Document[];
+    selected?: Document | null;
+  }
+
+  let { data, selected = $bindable(null) }: Props = $props();
 
   /**
    * Extract just the latter part of the filename if it starts with a date.
@@ -23,12 +26,12 @@
     new DateColumn<Document>(_("Date")),
     new StringColumn<Document>(_("Name"), (d) => name(d)),
   ] as const;
-  let sorter = new Sorter(columns[0], "desc");
+  let sorter = $state(new Sorter(columns[0], "desc"));
 
-  $: filtered_documents = data.filter((doc) =>
-    isDescendant(doc.account, $selectedAccount),
+  let filtered_documents = $derived(
+    data.filter((doc) => isDescendant(doc.account, $selectedAccount)),
   );
-  $: sorted_documents = sorter.sort(filtered_documents);
+  let sorted_documents = $derived(sorter.sort(filtered_documents));
 </script>
 
 <table>
@@ -45,10 +48,10 @@
         class:selected={selected === doc}
         draggable={true}
         title={doc.filename}
-        on:dragstart={(ev) => {
+        ondragstart={(ev) => {
           ev.dataTransfer?.setData("fava/filename", doc.filename);
         }}
-        on:click={() => {
+        onclick={() => {
           selected = doc;
         }}
       >

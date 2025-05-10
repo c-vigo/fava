@@ -1,6 +1,43 @@
 Changelog
 =========
 
+v1.30 (2024-12-29)
+------------------
+
+Support for Beancount version 3 was added. Using Beancount 2 is still
+supported. Beancount query support is now provided by the beanquery package,
+which has some minor differences in syntax, the provided columns and functions
+to the bean-query functionality in Beancount version 2. For extensions using
+Fava's query_shell directly, this will lead to breakage due to differences in
+methods and the types that are returned.
+
+For importers, this sticks to beancount.ingest on v2 and used beangulp for v3.
+Due to changes related to duplicate detection, duplicate detection is not
+automatically done by Fava here but can still be manually specified as hooks.
+
+Under the hood, this also upgrades Svelte (the framework used for the frontend
+parts) to version 5.
+
+v1.29 (2024-10-09)
+------------------
+
+With this release, query results are now rendered in the frontend. The
+templates for HTML rendering are still available but extension authors are
+encouraged to switch, see the statistics report for an example how this can be
+done. This release adds CSS styles for dark-mode. Numerical comparisons on the
+units, price or cost are now possible in Fava filters. As the watchfiles based
+watcher might not work correctly in some setups with network file systems, you
+can switch to the (slower) polling based watcher as well. The `default-file`
+option, if set, is now considered instead of the "main" file when inserting an
+entry.
+
+v1.28 (2024-07-07)
+------------------
+
+This release accumulates a couple of minor fixes and improvements. Under the
+hood, the file change detection is now powered by watchfiles instead of
+polling, which is more performant.
+
 v1.27 (2024-01-06)
 ------------------
 

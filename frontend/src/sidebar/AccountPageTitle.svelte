@@ -2,15 +2,18 @@
   import { day } from "../format";
   import { urlForAccount } from "../helpers";
   import { account_details } from "../stores";
-
   import AccountIndicator from "./AccountIndicator.svelte";
 
-  export let account: string;
+  interface Props {
+    account: string;
+  }
 
-  $: parts = account.split(":");
+  let { account }: Props = $props();
 
-  $: details = $account_details[account];
-  $: last = details?.last_entry;
+  let parts = $derived(account.split(":"));
+
+  let details = $derived($account_details[account]);
+  let last = $derived(details?.last_entry);
 </script>
 
 <span class="droptarget" data-account-name={account}>
