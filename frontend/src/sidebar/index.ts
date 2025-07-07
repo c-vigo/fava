@@ -6,7 +6,7 @@ import { mount } from "svelte";
 import { get as store_get } from "svelte/store";
 
 import Modals from "../modals/Modals.svelte";
-import { ledger_title } from "../stores";
+import { ledger_title } from "../stores/options";
 import HeaderAndAside from "./HeaderAndAside.svelte";
 import { page_title } from "./page-title";
 
@@ -15,10 +15,11 @@ export function initSidebar(): void {
     document.title = `${title} - ${store_get(ledger_title)}`;
   });
 
-  mount(HeaderAndAside, {
-    target: document.body,
-    anchor: document.querySelector("article") ?? undefined,
-  });
+  const anchor = document.querySelector("article");
+  mount(
+    HeaderAndAside,
+    anchor ? { target: document.body, anchor } : { target: document.body },
+  );
 
   mount(Modals, {
     target: document.body,

@@ -20,7 +20,6 @@ if TYPE_CHECKING:  # pragma: no cover
 
     from fava.beans.abc import Directive
     from fava.beans.ingest import FileMemo
-    from fava.core.ingest import HookOutput
 
 DATE = datetime.date(2022, 12, 12)
 
@@ -138,14 +137,27 @@ class TestImporterThatErrorsOnExtract(TestImporter):
         raise TypeError
 
 
+def _example_noop_importer_legacy_hook(
+    files_entries: list[tuple[str, list[Directive]]],
+    _existing: Sequence[Directive],
+) -> list[tuple[str, list[Directive]]]:
+    for e in files_entries:
+        assert len(e) == 2
+    return files_entries
+
+
 def _example_noop_importer_hook(
-    entries: HookOutput,
-    existing: Sequence[Directive],  # noqa: ARG001
-) -> HookOutput:
-    return entries
+    files_entries_accounts_importers: list[
+        tuple[str, list[Directive], str, BeanImporterProtocol | Importer]
+    ],
+    _existing: Sequence[Directive],
+) -> list[tuple[str, list[Directive], str, BeanImporterProtocol | Importer]]:
+    for e in files_entries_accounts_importers:
+        assert len(e) == 4
+    return files_entries_accounts_importers
 
 
-HOOKS = [_example_noop_importer_hook]
+HOOKS = [_example_noop_importer_legacy_hook, _example_noop_importer_hook]
 
 
 with suppress(ImportError):  # pragma: no cover

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import sys
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -10,6 +9,7 @@ from beancount.core.number import MISSING
 from beancount.core.position import CostSpec
 
 from fava.beans import create
+from fava.beans.funcs import hash_entry
 from fava.beans.helpers import replace
 from fava.beans.str import to_string
 from fava.core.charts import dumps
@@ -44,9 +44,11 @@ def test_serialise_txn() -> None:
             create.posting("Assets:ETrade:GLD", "0 USD"),
         ],
     )
+    entry_hash = hash_entry(txn)
 
     json_txn = {
         "date": "2017-12-12",
+        "entry_hash": entry_hash,
         "flag": "*",
         "meta": {},
         "narration": "asdfasd",
@@ -64,17 +66,17 @@ def test_serialise_txn() -> None:
     assert serialised == json_txn
 
     json_txn["payee"] = ""
-    serialised = loads(dumps(serialise(replace(txn, payee=""))))
+    txn = replace(txn, payee="")
+    json_txn["entry_hash"] = hash_entry(txn)
+    serialised = loads(dumps(serialise(txn)))
     assert serialised == json_txn
 
-    serialised = loads(dumps(serialise(replace(txn, payee=None))))
+    txn = replace(txn, payee=None)
+    json_txn["entry_hash"] = hash_entry(txn)
+    serialised = loads(dumps(serialise(txn)))
     assert serialised == json_txn
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="skipped on Windows due to different absolute path",
-)
 def test_serialise_entry_types(
     snapshot: SnapshotFunc,
     load_doc_entries: list[Directive],
@@ -83,7 +85,7 @@ def test_serialise_entry_types(
     2017-12-11 open Assets:Cash USD "STRICT"
     2017-12-13 balance Assets:Cash 1 USD
     2017-12-14 balance Assets:Cash 1 ~ 1.0 USD
-    2017-12-16 document Assets:Cash "/absolute/filename" #tag ^link
+    2017-12-16 document Assets:Cash "./tests/data/filename" #tag ^link
     2017-12-12 event "event name" "event description"
         bool-value: TRUE
         string-value: "value"
@@ -234,10 +236,13 @@ def test_serialise_balance() -> None:
         amount=create.amount("0.1234567891011121314151617 CHF"),
     )
 
+    entry_hash = hash_entry(bal)
+
     json = {
         "date": "2019-09-17",
         "amount": {"currency": "CHF", "number": "0.1234567891011121314151617"},
         "diff_amount": None,
+        "entry_hash": entry_hash,
         "meta": {},
         "tolerance": None,
         "account": "Assets:ETrade:Cash",

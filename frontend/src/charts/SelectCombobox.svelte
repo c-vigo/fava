@@ -14,11 +14,6 @@
   In particular it should match the Select-Only Combobox example at
     https://www.w3.org/WAI/ARIA/apg/patterns/combobox/examples/combobox-select-only/
 -->
-<script lang="ts" module>
-  /** Incrementing number to use for element ids in the component. */
-  let id = 0;
-</script>
-
 <script lang="ts">
   interface Props {
     /** The currently entered value. */
@@ -45,8 +40,8 @@
   /** The popup list element. */
   let ul: HTMLUListElement | undefined = $state();
 
-  id += 1;
-  const listbox_id = `combobox-listbox-${id.toString()}`;
+  const uid = $props.id();
+  const listbox_id = `combobox-listbox-${uid.toString()}`;
 
   const SEPARATOR = ",";
   let values = $derived(value.split(SEPARATOR));
@@ -103,6 +98,7 @@
       const option = o ?? options[index];
       if (option != null) {
         if (
+          // biome-ignore lint/complexity/useOptionalChain: clashes with strict-boolean-expressions rule
           multiple_select != null &&
           multiple_select(option) &&
           values.every(multiple_select)
@@ -173,7 +169,7 @@
     {description(value)}
   </button>
   <ul {hidden} role="listbox" id={listbox_id} bind:this={ul}>
-    {#each options as option, i}
+    {#each options as option, i (option)}
       <li
         role="option"
         aria-selected={values.includes(option)}

@@ -2,16 +2,16 @@
   import AutocompleteInput from "../AutocompleteInput.svelte";
   import { _ } from "../i18n";
   import { date as validate_date } from "../lib/validation";
-  import { accounts } from "../stores";
+  import { accounts, accounts_set } from "../stores";
   import { is_closed_account } from "../stores/accounts";
 
   interface Props {
     /** The account name input value. */
     value: string;
     /** An optional list of accounts to suggest - otherwise the whole account list is used. */
-    suggestions?: string[];
+    suggestions?: string[] | undefined;
     /** The date to enter this account for to exclude closed accounts. */
-    date?: string;
+    date?: string | undefined;
     /** An optional class name to assign to the input element. */
     className?: string;
     /** Whether to mark the input as required. */
@@ -27,7 +27,7 @@
   }: Props = $props();
 
   let checkValidity = $derived((val: string) =>
-    !$accounts.length || $accounts.includes(val) || (required !== true && !val)
+    !$accounts_set.size || $accounts_set.has(val) || (required !== true && !val)
       ? ""
       : _("Should be one of the declared accounts"),
   );

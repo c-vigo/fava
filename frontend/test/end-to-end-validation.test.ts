@@ -1,6 +1,6 @@
 import { get as store_get } from "svelte/store";
 import { test } from "uvu";
-import assert from "uvu/assert";
+import * as assert from "uvu/assert";
 
 import { getAPIValidators } from "../src/api/validators";
 import { chartContext } from "../src/charts/context";
@@ -9,8 +9,8 @@ import {
   sunburstScale,
   treemapScale,
 } from "../src/charts/helpers";
-import { currencies, ledgerData } from "../src/stores";
 import { conversions } from "../src/stores/chart";
+import { currencies, ledgerData } from "../src/stores/index";
 import { initialiseLedgerData, loadJSONSnapshot } from "./helpers";
 
 test.before(initialiseLedgerData);
@@ -58,6 +58,14 @@ test("validate events", async () => {
   const data = await loadJSONSnapshot("test_json_api-test_api-events.json");
   const res = getAPIValidators.events(data);
   assert.equal(res.unwrap()[0]?.type, "employer");
+});
+
+test("validate journal", async () => {
+  const data = await loadJSONSnapshot("test_json_api-test_api-journal.json");
+  const res = getAPIValidators.journal(data);
+  assert.ok(res.is_ok);
+  const entries = res.unwrap();
+  assert.equal(entries.length, 25);
 });
 
 test.run();

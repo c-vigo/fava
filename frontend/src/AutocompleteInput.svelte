@@ -11,11 +11,6 @@
   In particular it should match the Editable Combobox With List Autocomplete example at
     https://www.w3.org/WAI/ARIA/apg/patterns/combobox/examples/combobox-autocomplete-list/
 -->
-<script lang="ts" module>
-  /** Incrementing number to use for element ids in the component. */
-  let id = 0;
-</script>
-
 <script lang="ts">
   import type { KeySpec } from "./keyboard-shortcuts";
   import { keyboardShortcut } from "./keyboard-shortcuts";
@@ -35,13 +30,13 @@
     /** Automatically adjust the size of the input element. */
     setSize?: boolean;
     /** An optional class name to assign to the input element. */
-    className?: string;
+    className?: string | undefined;
     /** A key binding to add for this input. */
     key?: KeySpec;
     /** A function that checks the entered value for validity. */
     checkValidity?: (val: string) => string;
     /** Whether to mark the input as required. */
-    required?: boolean;
+    required?: boolean | undefined;
     /** Whether to show a button to clear the input. */
     clearButton?: boolean;
     /** An event handler to run on blur. */
@@ -69,8 +64,8 @@
     onSelect,
   }: Props = $props();
 
-  id += 1;
-  const autocomple_id = `combobox-autocomplete-${id.toString()}`;
+  const uid = $props.id();
+  const autocomple_id = `combobox-autocomplete-${uid.toString()}`;
 
   let hidden = $state.raw(true);
   let index = $state.raw(-1);
@@ -195,7 +190,7 @@
   {/if}
   {#if filteredSuggestions.length}
     <ul {hidden} role="listbox" id={autocomple_id}>
-      {#each filteredSuggestions as { fuzzywrapped, suggestion }, i}
+      {#each filteredSuggestions as { fuzzywrapped, suggestion }, i (suggestion)}
         <li
           role="option"
           aria-selected={i === index}
@@ -204,7 +199,7 @@
             mousedown(ev, suggestion);
           }}
         >
-          {#each fuzzywrapped as [type, text]}
+          {#each fuzzywrapped as [type, text] (`${type}-${text}`)}
             {#if type === "text"}
               {text}
             {:else}

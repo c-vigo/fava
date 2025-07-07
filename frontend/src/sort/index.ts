@@ -113,7 +113,7 @@ export class NumberColumn<T> implements SortColumn<T> {
 }
 /** A SortColumn for objects with a string date property. */
 export class DateColumn<T extends { date: string }> extends NumberColumn<T> {
-  constructor(readonly name: string) {
+  constructor(override readonly name: string) {
     super(name, (d: T) => new Date(d.date).valueOf());
   }
 }
@@ -134,7 +134,7 @@ export class StringColumn<T> implements SortColumn<T> {
 /** Parse a number from the string, ignoring all other characters. */
 function parse_number(num: string): number {
   const cleaned = num.replace(/[^\-?0-9.]/g, "");
-  const n = parseFloat(cleaned);
+  const n = Number.parseFloat(cleaned);
   return Number.isNaN(n) ? 0 : n;
 }
 

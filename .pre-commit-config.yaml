@@ -2,9 +2,9 @@ ci:
   skip: ["eslint"]
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.8
+    rev: v0.12.1
     hooks:
-      - id: ruff
+      - id: ruff-check
         args: ["--fix"]
       - id: ruff-format
   - repo: https://github.com/executablebooks/mdformat
@@ -14,18 +14,23 @@ repos:
         args: ["--wrap", "80"]
         additional_dependencies:
           - mdformat-gfm
+  - repo: https://github.com/biomejs/pre-commit
+    rev: v2.0.6
+    hooks:
+      - id: biome-check
+        args: ["--error-on-warnings"]
   - repo: local
     hooks:
       - id: prettier
         name: prettier
         language: node
         entry: prettier --write --list-different
-        types_or: ["css", "javascript", "json", "svelte", "yaml", "ts"]
+        types_or: ["svelte", "yaml"]
         require_serial: true
         additional_dependencies:
-          - "prettier@3.5.3"
-          - "prettier-plugin-svelte@3.3.3"
-          - "svelte@5.28.2"
+          - "prettier@3.6.2"
+          - "prettier-plugin-svelte@3.4.0"
+          - "svelte@5.35.0"
       - id: stylelint
         name: stylelint
         language: node
@@ -33,15 +38,14 @@ repos:
         types_or: ["css", "svelte"]
         require_serial: true
         additional_dependencies:
-          - "stylelint@16.19.1"
-          - "stylelint-config-recess-order@6.0.0"
+          - "stylelint@16.21.0"
+          - "stylelint-config-recess-order@7.1.0"
           - "stylelint-config-standard@38.0.0"
           - "postcss-html@1.8.0"
       - id: eslint
         name: eslint
         language: node
-        entry:
-          ./frontend/node_modules/eslint/bin/eslint.js --config
+        entry: ./frontend/node_modules/eslint/bin/eslint.js --config
           frontend/eslint.config.mjs --fix --max-warnings 0
         require_serial: true
         types_or: ["javascript", "svelte", "ts"]

@@ -1,6 +1,7 @@
-import { derived, writable } from "svelte/store";
+import { derived, type Readable, writable } from "svelte/store";
 
 import type { BeancountError, LedgerData } from "../api/validators";
+import { get_internal_accounts } from "../lib/account";
 import { DEFAULT_INTERVAL } from "../lib/interval";
 import { derived_array } from "../lib/store";
 
@@ -13,27 +14,6 @@ export const interval = writable(DEFAULT_INTERVAL);
 export const errors = writable<readonly BeancountError[]>([]);
 
 export const ledgerData = writable<LedgerData>();
-
-/** Fava's options */
-export const fava_options = derived(ledgerData, (v) => v.fava_options);
-/** The customized currency conversion select list */
-export const conversion_currencies = derived_array(
-  fava_options,
-  ($fava_options) => $fava_options.conversion_currencies,
-);
-export const locale = derived(
-  fava_options,
-  ($fava_options) => $fava_options.locale,
-);
-
-/** Beancount's options */
-export const options = derived(ledgerData, (v) => v.options);
-/** Beancount ledger title */
-export const ledger_title = derived(options, ($options) => $options.title);
-/** The operating currencies (sorted). */
-export const operating_currency = derived_array(options, ($options) =>
-  [...$options.operating_currency].sort(),
-);
 
 /** Commodity display precisions. */
 export const precisions = derived(ledgerData, (v) => v.precisions);
@@ -48,10 +28,12 @@ export const extensions = derived(ledgerData, (v) => v.extensions);
 
 /** The ranked array of all accounts. */
 export const accounts = derived_array(ledgerData, (v) => v.accounts);
-export const accounts_set = derived(
+export const accounts_set: Readable<ReadonlySet<string>> = derived(
   accounts,
   ($accounts) => new Set($accounts),
 );
+/** All non-leaf accounts. */
+export const accounts_internal = derived_array(accounts, get_internal_accounts);
 
 /** Get the name (as given per metadata) of a currency. */
 export const currency_name = derived(
@@ -76,5 +58,5 @@ export const years = derived_array(ledgerData, (v) => v.years);
 
 /** The sorted array of all used currencies. */
 export const currencies_sorted = derived_array(currencies, ($currencies) =>
-  [...$currencies].sort(),
+  $currencies.toSorted(),
 );

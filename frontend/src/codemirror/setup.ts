@@ -39,7 +39,7 @@ import type { Action } from "svelte/action";
 import { get as store_get } from "svelte/store";
 
 import { log_error } from "../log";
-import { fava_options } from "../stores";
+import { currency_column, indent } from "../stores/fava_options";
 import { getBeancountLanguageSupport } from "./beancount";
 import {
   beancountEditorHighlight,
@@ -86,7 +86,9 @@ function setup(
   extensions: Extension[],
 ): EditorAndAction {
   const view = new EditorView({
-    state: EditorState.create({ doc: value, extensions }),
+    state: EditorState.create(
+      value !== undefined ? { doc: value, extensions } : { extensions },
+    ),
   });
   return {
     editor: view,
@@ -136,11 +138,12 @@ export function initBeancountEditor(
   commands: KeyBinding[],
   beancount: LanguageSupport,
 ): EditorAndAction {
-  const { indent, currency_column } = store_get(fava_options);
+  const $indent = store_get(indent);
+  const $currency_column = store_get(currency_column);
   return setup(value, [
     beancount,
-    indentUnit.of(" ".repeat(indent)),
-    ...(currency_column ? [rulerPlugin(currency_column - 1)] : []),
+    indentUnit.of(" ".repeat($indent)),
+    ...($currency_column ? [rulerPlugin($currency_column - 1)] : []),
     keymap.of(commands),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {

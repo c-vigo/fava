@@ -123,6 +123,7 @@ h3 {
 h4,
 h5 {
   font-size: 1em;
+  font-weight: 500;
 }
 
 hr {
@@ -169,6 +170,7 @@ textarea {
 input,
 textarea {
   padding: 6px 10px;
+  background: var(--placeholder-background);
   border: 1px solid var(--border-darker);
 }
 
@@ -346,7 +348,7 @@ kbd {
 }
 
 .dimmed {
-  opacity: 0.7;
+  opacity: 0.8;
 }
 
 /*
@@ -380,6 +382,10 @@ kbd {
 
 .right {
   float: right;
+}
+
+.deprecation-notice {
+  border: 1px solid var(--error);
 }
 
 copyable-text {

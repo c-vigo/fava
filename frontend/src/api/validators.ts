@@ -188,6 +188,7 @@ export const getAPIValidators = {
   extract: array(entryValidator),
   imports: importable_files_validator,
   income_statement: tree_report,
+  journal: array(entryValidator),
   ledger_data: ledgerDataValidator,
   move: string,
   options: object({
@@ -196,6 +197,8 @@ export const getAPIValidators = {
   }),
   payee_accounts: array(string),
   payee_transaction: Transaction.validator,
+  narration_transaction: Transaction.validator,
+  narrations: array(string),
   query: query_validator,
   source,
   trial_balance: tree_report,

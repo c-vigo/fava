@@ -5,6 +5,7 @@
 
   import { formatPercentage } from "../format";
   import { urlForAccount } from "../helpers";
+  import { leaf } from "../lib/account";
   import { ctx } from "../stores/format";
   import { treemapScale } from "./helpers";
   import type {
@@ -16,15 +17,14 @@
   interface Props {
     data: AccountHierarchyNode;
     width: number;
+    height: number;
     currency: string;
   }
 
-  let { data, width, currency }: Props = $props();
-
-  let height = $derived(Math.min(width / 2.5, 400));
+  let { data, width, height, currency }: Props = $props();
 
   const tree = treemap<AccountHierarchyDatum>().paddingInner(2).round(true);
-  let root = $derived(tree.size([width, height])(data));
+  let root = $derived(tree.size([width, height])(data.copy()));
   let leaves = $derived(
     root.leaves().filter((d) => d.value != null && d.value !== 0),
   );
@@ -65,13 +65,14 @@
 </script>
 
 <svg viewBox={`0 0 ${width.toString()} ${height.toString()}`}>
-  {#each leaves as d}
+  {#each leaves as d (d.data.account)}
+    {@const account = d.data.account}
     <g
       transform={`translate(${d.x0.toString()},${d.y0.toString()})`}
       use:followingTooltip={() => tooltipText(d)}
     >
       <rect fill={fill(d)} width={d.x1 - d.x0} height={d.y1 - d.y0} />
-      <a href={$urlForAccount(d.data.account)}>
+      <a href={$urlForAccount(account)}>
         <text
           use:setVisibility={d}
           dy=".5em"
@@ -79,7 +80,7 @@
           y={(d.y1 - d.y0) / 2}
           text-anchor="middle"
         >
-          {d.data.account.split(":").pop() ?? ""}
+          {leaf(account)}
         </text>
       </a>
     </g>

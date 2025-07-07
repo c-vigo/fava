@@ -11,11 +11,10 @@
   import { _ } from "../i18n";
   import { notify, notify_err } from "../notifications";
   import router from "../router";
-  import { options } from "../stores";
+  import { documents } from "../stores/options";
   import ModalBase from "./ModalBase.svelte";
 
   let shown = $derived(!!$files.length);
-  let documents = $derived($options.documents);
 
   let documents_folder = $state("");
 
@@ -47,7 +46,7 @@
 <ModalBase {shown} {closeHandler}>
   <form onsubmit={submit}>
     <h3>{_("Upload file(s)")}:</h3>
-    {#each $files as file}
+    {#each $files as file (file.dataTransferFile)}
       <div class="fieldset">
         <input class="file" bind:value={file.name} />
       </div>
@@ -56,7 +55,7 @@
       <label>
         <span>{_("Documents folder")}:</span>
         <select bind:value={documents_folder}>
-          {#each documents as folder}
+          {#each $documents as folder (folder)}
             <option>{folder}</option>
           {/each}
         </select>
@@ -81,11 +80,11 @@
     margin-bottom: 6px;
   }
 
-  .fieldset :global(span):first-child {
+  .fieldset > label > :global(span):first-child {
     margin-right: 8px;
   }
 
-  .fieldset.account :global(span):last-child {
+  .fieldset.account > label > :global(span):last-child {
     min-width: 25rem;
   }
 </style>

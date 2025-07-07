@@ -29,7 +29,7 @@
   let data = $derived(chart.filter($chartToggledCurrencies));
 
   // Scales and quadtree
-  let allValues = $derived(data.map((d) => d.values).flat(1));
+  let allValues = $derived(data.flatMap((d) => d.values));
 
   let xExtent = $derived([
     min(data, (s) => s.values[0]?.date) ?? today,
@@ -97,21 +97,21 @@
     <Axis y axis={yAxis} />
     {#if $lineChartMode === "area"}
       <g class="area" filter={futureFilter}>
-        {#each data as d}
+        {#each data as d (d.name)}
           <path d={areaShape(d.values)} fill={$currenciesScale(d.name)} />
         {/each}
       </g>
     {/if}
     <g class="lines" filter={futureFilter}>
-      {#each data as d}
+      {#each data as d (d.name)}
         <path d={lineShape(d.values)} stroke={$currenciesScale(d.name)} />
       {/each}
     </g>
     {#if $lineChartMode === "line"}
       <g>
-        {#each data as d}
+        {#each data as d (d.name)}
           <g fill={$currenciesScale(d.name)}>
-            {#each d.values as v}
+            {#each d.values as v (v.date)}
               <circle
                 r="2"
                 cx={x(v.date)}

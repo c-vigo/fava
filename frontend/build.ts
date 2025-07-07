@@ -1,9 +1,9 @@
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import chokidar from "chokidar";
 import { context } from "esbuild";
 import svelte from "esbuild-svelte";
-import { typescript } from "svelte-preprocess-esbuild";
-
-import { compilerOptions } from "./tsconfig.json";
 
 /**
  * Create a debounced function.
@@ -32,7 +32,7 @@ async function runBuild(dev: boolean) {
     bundle: true,
     outfile: "../src/fava/static/app.js",
     conditions: dev ? ["development"] : ["production"],
-    external: ["module"], // for web-tree-sitter
+    external: ["fs/promises", "module"], // for web-tree-sitter
     loader: {
       ".wasm": "file",
       ".woff": "empty",
@@ -41,11 +41,10 @@ async function runBuild(dev: boolean) {
     plugins: [
       svelte({
         compilerOptions: { dev, runes: true },
-        preprocess: typescript(),
       }),
     ],
     sourcemap: dev,
-    target: compilerOptions.target,
+    target: "esnext",
   });
   console.log("starting build");
   await ctx.rebuild();
@@ -78,7 +77,10 @@ async function runBuild(dev: boolean) {
   }
 }
 
-if (require.main === module) {
+const filename = fileURLToPath(import.meta.url);
+const is_main = resolve(process.argv[1] ?? "") === filename;
+
+if (is_main) {
   const dev = process.argv.includes("--watch");
   runBuild(dev).catch((e: unknown) => {
     console.error(e);

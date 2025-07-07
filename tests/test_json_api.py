@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import sys
 from difflib import Differ
 from http import HTTPStatus
 from io import BytesIO
@@ -336,6 +335,21 @@ def test_api_payee_transaction(
     )
     data = assert_api_success(response)
     snapshot(data, json=True)
+
+
+def test_api_narration_transaction(
+    test_client: FlaskClient,
+) -> None:
+    response = test_client.get(
+        "/long-example/api/narration_transaction",
+        query_string={"narration": "Buying groceries"},
+    )
+    data = assert_api_success(response)
+    assert data["date"] == "2016-04-21"
+    assert data["narration"] == "Buying groceries"
+    assert data["payee"] == "Farmer Fresh"
+    assert len(data["postings"]) == 2
+    assert data["t"] == "Transaction"
 
 
 def test_api_imports(
@@ -763,32 +777,15 @@ def test_api_filter_error(
     assert_api_error(response, status=HTTPStatus.BAD_REQUEST)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="does not run on windows")
-@pytest.mark.parametrize(
-    ("name", "url"),
-    [
-        ("documents", "/example/api/documents"),
-        ("options", "/long-example/api/options"),
-    ],
-)
-def test_api_unix_only(
-    test_client: FlaskClient,
-    snapshot: SnapshotFunc,
-    name: str,
-    url: str,
-) -> None:
-    response = test_client.get(url)
-    data = assert_api_success(response)
-    assert data
-    snapshot(data, name=name, json=True)
-
-
 @pytest.mark.parametrize(
     ("name", "url"),
     [
         ("commodities", "/long-example/api/commodities"),
+        ("documents", "/example/api/documents"),
         ("events", "/long-example/api/events"),
+        ("journal", "/example/api/journal"),
         ("income_statement", "/long-example/api/income_statement?time=2014"),
+        ("narrations", "/long-example/api/narrations"),
         ("trial_balance", "/long-example/api/trial_balance?time=2014"),
         ("balance_sheet", "/long-example/api/balance_sheet"),
         (
@@ -809,6 +806,7 @@ def test_api_unix_only(
                 "?interval=day&conversion=at_value&a=Assets&r=balances"
             ),
         ),
+        ("options", "/long-example/api/options"),
     ],
 )
 def test_api(

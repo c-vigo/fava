@@ -40,7 +40,9 @@ import router, { setStoreValuesFromURL, syncStoreValuesToURL } from "./router";
 import { initSidebar } from "./sidebar";
 import { has_changes, updatePageTitle } from "./sidebar/page-title";
 import { SortableTable } from "./sort/sortable-table";
-import { errors, fava_options, ledgerData } from "./stores";
+import { errors, ledgerData } from "./stores";
+import { init_color_scheme } from "./stores/color_scheme";
+import { auto_reload } from "./stores/fava_options";
 import { ledger_mtime, read_mtime } from "./stores/mtime";
 import { SvelteCustomElement } from "./svelte-custom-elements";
 import { TreeTableCustomElement } from "./tree-table/tree-table-custom-element";
@@ -79,7 +81,7 @@ function onChanges() {
     .catch((e: unknown) => {
       notify_err(e, (err) => `Error fetching ledger data: ${err.message}`);
     });
-  if (store_get(fava_options).auto_reload && !router.hasInteruptHandler) {
+  if (store_get(auto_reload) && !router.hasInteruptHandler) {
     router.reload();
   } else {
     get("errors").then((v) => {
@@ -135,6 +137,8 @@ function init(): void {
   });
 
   router.trigger("page-loaded");
+
+  init_color_scheme();
 }
 
 init();

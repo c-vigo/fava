@@ -4,10 +4,11 @@
   import type { NonEmptyArray } from "../lib/array";
   import { is_empty } from "../lib/objects";
   import { currency_name } from "../stores";
+  import { toggled_accounts } from "../stores/accounts";
   import { ctx } from "../stores/format";
   import AccountCell from "./AccountCell.svelte";
   import Diff from "./Diff.svelte";
-  import { getTreeTableContext } from "./helpers";
+  import { getTreeTableNotShownContext } from "./helpers";
   import IntervalTreeTableNode from "./IntervalTreeTableNode.svelte";
 
   interface Props {
@@ -19,19 +20,19 @@
 
   let { nodes, budgets }: Props = $props();
 
-  const { toggled, not_shown } = getTreeTableContext();
+  const not_shown = getTreeTableNotShownContext();
 
   let [node] = $derived(nodes);
   let { account, children } = $derived(node);
   let account_budgets = $derived(budgets[account]);
 
-  let is_toggled = $derived($toggled.has(account));
+  let is_toggled = $derived($toggled_accounts.has(account));
 </script>
 
 <li>
   <p>
     <AccountCell {node} />
-    {#each nodes as n, index}
+    {#each nodes as n, index (n.account)}
       {@const account_budget = account_budgets?.[index]}
       {@const has_balance =
         !is_empty(n.balance) ||
@@ -42,7 +43,7 @@
         ? account_budget?.budget
         : account_budget?.budget_children}
       <span class="num other" class:dimmed={!is_toggled && !has_balance}>
-        {#each Object.entries(shown_balance) as [currency, number]}
+        {#each Object.entries(shown_balance) as [currency, number] (currency)}
           {@const budget = shown_budget?.[currency]}
           <span title={$currency_name(currency)}>
             {$ctx.amount(number, currency)}
@@ -53,7 +54,7 @@
           <br />
         {/each}
         {#if shown_budget}
-          {#each Object.entries(shown_budget).filter(([c]) => !(shown_balance[c] ?? 0)) as [currency, budget]}
+          {#each Object.entries(shown_budget).filter(([c]) => !(shown_balance[c] ?? 0)) as [currency, budget] (currency)}
             <span title={$currency_name(currency)}>
               {$ctx.amount(0, currency)}
             </span>
